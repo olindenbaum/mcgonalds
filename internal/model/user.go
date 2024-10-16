@@ -2,11 +2,10 @@ package model
 
 import (
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type User struct {
-	gorm.Model
+	SwaggerGormModel
 	Username string `gorm:"uniqueIndex;not null"`
 	Password string `gorm:"not null"`
 }

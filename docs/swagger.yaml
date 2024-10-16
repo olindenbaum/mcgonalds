@@ -1,0 +1,362 @@
+basePath: /api/v1
+definitions:
+  handler.CommandRequest:
+    properties:
+      command:
+        type: string
+    type: object
+  handler.ErrorResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  handler.SuccessResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  model.AdditionalFile:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
+      type:
+        description: e.g., "modpack", "config", etc.
+        type: string
+      updated_at:
+        type: string
+    type: object
+  model.JarFile:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: string
+    type: object
+  model.Server:
+    properties:
+      additionalFileIDs:
+        items:
+          type: integer
+        type: array
+      additionalFiles:
+        items:
+          $ref: '#/definitions/model.AdditionalFile'
+        type: array
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      jarFile:
+        $ref: '#/definitions/model.JarFile'
+      jarFileID:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is a Minecraft server management service API
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Minecraft Server Manager API
+  version: "1.0"
+paths:
+  /additional-files:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload an additional file (e.g., modpack)
+      parameters:
+      - description: Name of the additional file
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Type of the additional file
+        in: formData
+        name: type
+        required: true
+        type: string
+      - description: The additional file to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.AdditionalFile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Upload an additional file
+      tags:
+      - additional-files
+  /jar-files:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a new Minecraft server jar file
+      parameters:
+      - description: Name of the jar file
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Version of the jar file
+        in: formData
+        name: version
+        required: true
+        type: string
+      - description: The jar file to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.JarFile'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Upload a jar file
+      tags:
+      - jar-files
+  /servers:
+    get:
+      description: Get a list of all Minecraft servers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Server'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: List all Minecraft servers
+      tags:
+      - servers
+  /servers/{name}:
+    delete:
+      description: Delete a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Delete a Minecraft server
+      tags:
+      - servers
+    get:
+      description: Get details of a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Server'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Get a Minecraft server
+      tags:
+      - servers
+  /servers/{name}/command:
+    post:
+      consumes:
+      - application/json
+      description: Send a command to a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Command to send
+        in: body
+        name: command
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CommandRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Send a command to a Minecraft server
+      tags:
+      - servers
+  /servers/{name}/restart:
+    post:
+      description: Restart a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Restart a Minecraft server
+      tags:
+      - servers
+  /servers/{name}/start:
+    post:
+      description: Start a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Start a Minecraft server
+      tags:
+      - servers
+  /servers/{name}/stop:
+    post:
+      description: Stop a specific Minecraft server by name
+      parameters:
+      - description: Server name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: Stop a Minecraft server
+      tags:
+      - servers
+swagger: "2.0"

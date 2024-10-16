@@ -1,11 +1,7 @@
 package model
 
-import (
-	"gorm.io/gorm"
-)
-
 type Server struct {
-	gorm.Model
+	SwaggerGormModel
 	Name              string `gorm:"uniqueIndex;not null"`
 	Path              string `gorm:"not null"`
 	JarFileID         uint

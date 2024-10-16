@@ -22,11 +22,6 @@ type ServerManager struct {
 
 func NewServerManager(db *gorm.DB, minioEndpoint, minioAccessKey, minioSecretKey string, minioUseSSL bool) (*ServerManager, error) {
 
-	fmt.Println("Creating MinIO client")
-	fmt.Println("Endpoint:", minioEndpoint)
-	fmt.Println("Access Key:", minioAccessKey)
-	fmt.Println("Secret Key:", minioSecretKey)
-	fmt.Println("Use SSL:", minioUseSSL)
 	minioClient, err := minio.New(minioEndpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(minioAccessKey, minioSecretKey, ""),
 		Secure: minioUseSSL,

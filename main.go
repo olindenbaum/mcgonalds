@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
+	_ "github.com/olindenbaum/mcgonalds/docs" // This line is important
 	"github.com/olindenbaum/mcgonalds/internal/config"
 	"github.com/olindenbaum/mcgonalds/internal/db"
 	"github.com/olindenbaum/mcgonalds/internal/handler"
@@ -14,6 +14,20 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
+// @title Minecraft Server Manager API
+// @version 1.0
+// @description This is a Minecraft server management service API
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /api/v1
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -39,9 +53,7 @@ func main() {
 	h.RegisterRoutes(api)
 
 	// Swagger route
-	port := strconv.Itoa(cfg.Server.Port)
-
-	swaggerURL := fmt.Sprintf("http://localhost:%s/swagger/doc.json", port)
+	swaggerURL := fmt.Sprintf("http://localhost:%s/swagger/doc.json", cfg.Server.Port)
 	r.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
 		httpSwagger.URL(swaggerURL), // The url pointing to API definition
 		httpSwagger.DeepLinking(true),
@@ -49,7 +61,7 @@ func main() {
 		httpSwagger.DomID("swagger-ui"),
 	)).Methods(http.MethodGet)
 
-	log.Printf("Starting server on port %s", port)
-	log.Printf("API documentation available at http://localhost:%s/swagger/index.html", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Printf("Starting server on port %s", cfg.Server.Port)
+	log.Printf("API documentation available at http://localhost:%s/swagger/index.html", cfg.Server.Port)
+	log.Fatal(http.ListenAndServe(":"+cfg.Server.Port, r))
 }
