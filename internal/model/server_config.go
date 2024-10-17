@@ -2,7 +2,7 @@ package model
 
 type ServerConfig struct {
 	SwaggerGormModel
-	ServerID          uint     `gorm:"not null" json:"server_id"`
+	ServerID          uint     `gorm:"uniqueIndex;not null" json:"server_id"`
 	JarFileID         uint     `gorm:"not null" json:"jar_file_id"`
 	JarFile           JarFile  `gorm:"foreignKey:JarFileID" json:"jar_file"`
 	ModPackID         *uint    `json:"mod_pack_id"`

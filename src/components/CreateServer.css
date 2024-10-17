@@ -1,0 +1,100 @@
+.create-server-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.create-server-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.form-group input[type="text"],
+.form-group select {
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.file-input-container {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.file-input {
+  margin-right: 10px;
+}
+
+.submit-button {
+  padding: 12px;
+  font-size: 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.submit-button:disabled {
+  background-color: #a5d6a7;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #f44336;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.success-message {
+  background-color: #4caf50;
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+/* Add transitions for smoother interactions */
+.create-server-form input,
+.create-server-form select,
+.submit-button {
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.create-server-form input:focus,
+.create-server-form select:focus {
+  border-color: #4caf50;
+  box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+/* Style for file input labels */
+.file-input-container span {
+  font-style: italic;
+  color: #555;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .create-server-container {
+    padding: 10px;
+  }
+
+  .submit-button {
+    width: 100%;
+  }
+}

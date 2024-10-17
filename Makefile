@@ -14,6 +14,10 @@ run:
 .PHONY: migrate
 migrate:
 	goose -dir migrations postgres $(DB_CONNECTION_STRING) up
+# Run database migrations
+.PHONY: down
+down:
+	goose -dir migrations postgres $(DB_CONNECTION_STRING) down
 
 # Generate Swagger documentation
 .PHONY: swagger

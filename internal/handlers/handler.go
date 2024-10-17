@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -41,6 +42,9 @@ func (h *Handler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/servers/{name}/upload-modpack", h.UploadModPack).Methods("POST")
 	r.HandleFunc("/jar-files", h.UploadSharedJarFile).Methods("POST")
 	r.HandleFunc("/mod-packs", h.UploadSharedModPack).Methods("POST")
+	r.HandleFunc("/jar-files", h.GetCommonJarFiles).Methods("GET")
+	r.HandleFunc("/mod-packs", h.GetCommonModPacks).Methods("GET")
+	// r.HandleFunc("/additional-files", h.UploadAdditionalFile).Methods("POST")
 }
 
 // CreateServer godoc
@@ -49,30 +53,163 @@ func (h *Handler) RegisterRoutes(r *mux.Router) {
 // @Tags servers
 // @Accept json
 // @Produce json
-// @Param server body model.CreateServerRequest true "Server creation request"
+// @Param name formData string true "Server Name"
+// @Param executable_command formData string true "Executable Command"
+// @Param jar_file_id formData int false "JAR File ID"
+// @Param jar_file formData file false "JAR File"
+// @Param mod_pack_id formData int false "Mod Pack ID"
+// @Param mod_pack formData file false "Mod Pack File"
 // @Success 201 {object} model.Server
 // @Failure 400 {object} model.ErrorResponse
 // @Failure 500 {object} model.ErrorResponse
 // @Router /servers [post]
 func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
-	var req model.CreateServerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	// Parse multipart form data with a maximum memory of 100MB
+	err := r.ParseMultipartForm(100 << 20)
+	if err != nil {
+		log.Printf("Error parsing multipart form: %v", err)
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return
 	}
 
-	server := &model.Server{
-		Name: req.Name,
-		Path: req.Path,
+	// Extract form values
+	name := r.FormValue("name")
+	executableCommand := r.FormValue("executable_command")
+	jarFileIDStr := r.FormValue("jar_file_id")
+	modPackIDStr := r.FormValue("mod_pack_id")
+
+	// Validate required fields
+	if name == "" || executableCommand == "" {
+		http.Error(w, "Name and executable_command are required", http.StatusBadRequest)
+		return
 	}
 
-	if err := h.DB.Create(server).Error; err != nil {
+	// Initialize variables for jar file
+	var jarFile *model.JarFile
+	var jarFileID uint
+	jarFileIDProvided := false
+
+	// Check if jar_file_id is provided
+	if jarFileIDStr != "" {
+		id, err := strconv.Atoi(jarFileIDStr)
+		if err != nil || id <= 0 {
+			http.Error(w, "Invalid jar_file_id", http.StatusBadRequest)
+			return
+		}
+		jarFileID = uint(id)
+		jarFileIDProvided = true
+	}
+
+	// Handle jar_file upload if provided
+	var uploadedJarFile *model.JarFile
+	jarFileUploaded := false
+	file, header, err := r.FormFile("jar_file")
+	if err == nil {
+		defer file.Close()
+		jarFileUploaded = true
+		uploadedJarFile, err = h.ServerManager.UploadJarFile(header.Filename, "default_version", file, header.Filename, header.Size, "TODOSERVERID", false)
+		if err != nil {
+			log.Printf("Error uploading JAR file: %v", err)
+			http.Error(w, "Failed to upload JAR file", http.StatusInternalServerError)
+			return
+		}
+	} else if err != http.ErrMissingFile {
+		log.Printf("Error retrieving jar_file: %v", err)
+		http.Error(w, "Failed to retrieve JAR file", http.StatusBadRequest)
+		return
+	}
+
+	// Ensure either jar_file or jar_file_id is provided, but not both
+	if jarFileUploaded && jarFileIDProvided {
+		http.Error(w, "Provide either jar_file or jar_file_id, not both", http.StatusBadRequest)
+		return
+	}
+
+	// If jar_file_id is provided, fetch the JarFile from the database
+	if jarFileIDProvided {
+		jarFile, err = h.ServerManager.GetJarFileByID(jarFileID)
+		if err != nil {
+			log.Printf("Error fetching JarFile by ID: %v", err)
+			http.Error(w, "Invalid jar_file_id", http.StatusBadRequest)
+			return
+		}
+	} else if jarFileUploaded {
+		jarFile = uploadedJarFile
+	} else {
+		http.Error(w, "Either jar_file or jar_file_id must be provided", http.StatusBadRequest)
+		return
+	}
+
+	// Initialize variables for mod pack
+	var modPack *model.ModPack
+	var modPackID uint
+	modPackIDProvided := false
+
+	// Check if mod_pack_id is provided
+	if modPackIDStr != "" {
+		id, err := strconv.Atoi(modPackIDStr)
+		if err != nil || id <= 0 {
+			http.Error(w, "Invalid mod_pack_id", http.StatusBadRequest)
+			return
+		}
+		modPackID = uint(id)
+		modPackIDProvided = true
+	}
+
+	// Handle mod_pack upload if provided
+	var uploadedModPack *model.ModPack
+	modPackUploaded := false
+	file, header, err = r.FormFile("mod_pack")
+	if err == nil {
+		defer file.Close()
+		modPackUploaded = true
+		uploadedModPack, err = h.ServerManager.UploadModPack(header.Filename, file, header.Size, "TODOSERVERID", false)
+		if err != nil {
+			log.Printf("Error uploading mod pack: %v", err)
+			http.Error(w, "Failed to upload mod pack", http.StatusInternalServerError)
+			return
+		}
+	} else if err != http.ErrMissingFile {
+		log.Printf("Error retrieving mod_pack: %v", err)
+		http.Error(w, "Failed to retrieve mod pack", http.StatusBadRequest)
+		return
+	}
+
+	// Ensure either mod_pack or mod_pack_id is provided, but not both
+	if modPackUploaded && modPackIDProvided {
+		http.Error(w, "Provide either mod_pack or mod_pack_id, not both", http.StatusBadRequest)
+		return
+	}
+
+	// If mod_pack_id is provided, fetch the ModPack from the database
+	if modPackIDProvided {
+		modPack, err = h.ServerManager.GetModPackByID(modPackID)
+		if err != nil {
+			log.Printf("Error fetching ModPack by ID: %v", err)
+			http.Error(w, "Invalid mod_pack_id", http.StatusBadRequest)
+			return
+		}
+	} else if modPackUploaded {
+		modPack = uploadedModPack
+	} else {
+		modPack = nil
+	}
+
+	// Create the server
+	dir, err := os.Getwd()
+	serverPath := filepath.Join(dir, "game_servers", name)
+	id, err := h.ServerManager.CreateServer(name, serverPath, executableCommand, jarFile, modPack, nil)
+	if err != nil {
+		log.Printf("Error creating server: %v", err)
 		http.Error(w, "Failed to create server", http.StatusInternalServerError)
 		return
 	}
 
-	if err := h.ServerManager.SetupServer(req.Name); err != nil {
-		http.Error(w, "Failed to setup server: "+err.Error(), http.StatusInternalServerError)
+	// Respond with the created server details
+	server, err := h.ServerManager.GetServer(id)
+	if err != nil {
+		log.Printf("Error fetching created server: %v", err)
+		http.Error(w, "Server created but failed to fetch details", http.StatusInternalServerError)
 		return
 	}
 
@@ -104,16 +241,21 @@ func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
 // @Description Get details of a specific Minecraft server by name
 // @Tags servers
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Success 200 {object} model.Server
 // @Failure 404 {object} model.ErrorResponse
 // @Failure 500 {object} model.ErrorResponse
-// @Router /servers/{name} [get]
+// @Router /servers/{id} [get]
 func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
-	server, err := h.ServerManager.GetServer(serverName)
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+	server, err := h.ServerManager.GetServer(uint8(id))
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			http.Error(w, "Server not found", http.StatusNotFound)
@@ -132,16 +274,22 @@ func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 // @Description Delete a specific Minecraft server by name
 // @Tags servers
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Success 200 {object} map[string]string
 // @Failure 404 {object} model.ErrorResponse
 // @Failure 500 {object} model.ErrorResponse
-// @Router /servers/{name} [delete]
+// @Router /servers/{id} [delete]
 func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
-	if err := h.ServerManager.DeleteServer(serverName); err != nil {
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.ServerManager.DeleteServer(uint8(id)); err != nil {
 		http.Error(w, "Failed to delete server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -155,16 +303,22 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 // @Description Start a specific Minecraft server by name
 // @Tags servers
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Success 200 {object} map[string]string
 // @Failure 404 {object{ model.ErrorResponse
 // @Failure 500 {object{ model.ErrorResponse
-// @Router /servers/{name}/start [post]
+// @Router /servers/{id}/start [post]
 func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
-	if err := h.ServerManager.StartServer(serverName); err != nil {
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.ServerManager.StartServer(uint8(id)); err != nil {
 		http.Error(w, "Failed to start server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -178,16 +332,22 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 // @Description Stop a specific Minecraft server by name
 // @Tags servers
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Success 200 {object} map[string]string
 // @Failure 404 {object{ model.ErrorResponse
 // @Failure 500 {object{ model.ErrorResponse
-// @Router /servers/{name}/stop [post]
+// @Router /servers/{id}/stop [post]
 func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
-	if err := h.ServerManager.StopServer(serverName); err != nil {
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.ServerManager.StopServer(uint8(id)); err != nil {
 		http.Error(w, "Failed to stop server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -201,16 +361,22 @@ func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 // @Description Restart a specific Minecraft server by name
 // @Tags servers
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Success 200 {object} map[string]string
 // @Failure 404 {object{ model.ErrorResponse
 // @Failure 500 {object{ model.ErrorResponse
-// @Router /servers/{name}/restart [post]
+// @Router /servers/{id}/restart [post]
 func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
-	if err := h.ServerManager.RestartServer(serverName); err != nil {
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.ServerManager.RestartServer(uint8(id)); err != nil {
 		http.Error(w, "Failed to restart server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -225,17 +391,22 @@ func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 // @Tags servers
 // @Accept json
 // @Produce json
-// @Param name path string true "Server Name"
+// @Param id path uint8 true "Server ID"
 // @Param command body map[string]string true "Command to send"
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} model.ErrorResponse
 // @Failure 404 {object} model.ErrorResponse
 // @Failure 500 {object} model.ErrorResponse
-// @Router /servers/{name}/command [post]
+// @Router /servers/{id}/command [post]
 func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serverName := vars["name"]
+	serverId := vars["id"]
 
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
 	var commandReq struct {
 		Command string `json:"command"`
 	}
@@ -244,7 +415,7 @@ func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.ServerManager.SendCommand(serverName, commandReq.Command); err != nil {
+	if _, err := h.ServerManager.SendCommand(uint8(id), commandReq.Command); err != nil {
 		http.Error(w, "Failed to send command: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -448,3 +619,91 @@ func (h *Handler) UploadSharedModPack(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(modPack)
 }
+
+// GetCommonJarFiles godoc
+// @Summary Get common JAR files
+// @Description Retrieve a list of common JAR files
+// @Tags jar-files
+// @Produce json
+// @Param common query bool false "Filter by common JAR files"
+// @Success 200 {array} model.JarFile
+// @Failure 500 {object} model.ErrorResponse
+// @Router /jar-files [get]
+func (h *Handler) GetCommonJarFiles(w http.ResponseWriter, r *http.Request) {
+	commonParam := r.URL.Query().Get("common")
+	common, err := strconv.ParseBool(commonParam)
+	if commonParam != "" && err != nil {
+		http.Error(w, "Invalid 'common' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	jarFiles, err := h.ServerManager.GetJarFiles(common)
+	if err != nil {
+		http.Error(w, "Failed to fetch JAR files", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(jarFiles)
+}
+
+// GetCommonModPacks godoc
+// @Summary Get common mod packs
+// @Description Retrieve a list of common mod packs
+// @Tags mod-packs
+// @Produce json
+// @Param common query bool false "Filter by common mod packs"
+// @Success 200 {array} model.ModPack
+// @Failure 500 {object} model.ErrorResponse
+// @Router /mod-packs [get]
+func (h *Handler) GetCommonModPacks(w http.ResponseWriter, r *http.Request) {
+	commonParam := r.URL.Query().Get("common")
+	common, err := strconv.ParseBool(commonParam)
+	if commonParam != "" && err != nil {
+		http.Error(w, "Invalid 'common' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	modPacks, err := h.ServerManager.GetModPacks(common)
+	if err != nil {
+		http.Error(w, "Failed to fetch mod packs", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(modPacks)
+}
+
+// // UploadAdditionalFile godoc
+// // @Summary Upload an additional file for a server
+// // @Description Upload an additional file to a specific server
+// // @Tags servers
+// // @Accept multipart/form-data
+// // @Produce json
+// // @Param name path string true "Server Name"
+// // @Param file formData file true "Additional file to upload"
+// // @Success 200 {object} map[string]string "File uploaded successfully"
+// // @Failure 400 {object} model.ErrorResponse
+// // @Failure 500 {object} model.ErrorResponse
+// // @Router /servers/{name}/additional-files [post]
+// func (h *Handler) UploadAdditionalFile(w http.ResponseWriter, r *http.Request) {
+// 	vars := mux.Vars(r)
+// 	serverName := vars["name"]
+
+// 	file, header, err := r.FormFile("file")
+// 	if err != nil {
+// 		http.Error(w, "Failed to get file from form", http.StatusBadRequest)
+// 		return
+// 	}
+// 	defer file.Close()
+
+// 	// Call ServerManager's UploadAdditionalFile
+// 	err = h.ServerManager.UploadAdditionalFile(serverName, file, header.Size)
+// 	if err != nil {
+// 		http.Error(w, "Failed to upload additional file: "+err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	w.WriteHeader(http.StatusOK)
+// 	json.NewEncoder(w).Encode(map[string]string{"message": "File uploaded successfully"})
+// }
