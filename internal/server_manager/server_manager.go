@@ -1,39 +1,31 @@
 package server_manager
 
 import (
-	"context"
 	"fmt"
 	"io"
+	"log"
+	"os"
+	"path/filepath"
 	"sync"
 
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/olindenbaum/mcgonalds/internal/model"
 	"github.com/olindenbaum/mcgonalds/internal/server"
+	"github.com/olindenbaum/mcgonalds/internal/utils"
 	"gorm.io/gorm"
 )
 
 type ServerManager struct {
-	db          *gorm.DB
-	servers     map[string]*server.Server
-	mutex       sync.RWMutex
-	minioClient *minio.Client
+	db        *gorm.DB
+	servers   map[string]*server.Server
+	mutex     sync.RWMutex
+	commonDir string
 }
 
-func NewServerManager(db *gorm.DB, minioEndpoint, minioAccessKey, minioSecretKey string, minioUseSSL bool) (*ServerManager, error) {
-
-	minioClient, err := minio.New(minioEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(minioAccessKey, minioSecretKey, ""),
-		Secure: minioUseSSL,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create MinIO client: %w", err)
-	}
-
+func NewServerManager(db *gorm.DB, commonDir string) (*ServerManager, error) {
 	return &ServerManager{
-		db:          db,
-		servers:     make(map[string]*server.Server),
-		minioClient: minioClient,
+		db:        db,
+		servers:   make(map[string]*server.Server),
+		commonDir: commonDir,
 	}, nil
 }
 
@@ -61,85 +53,31 @@ func (sm *ServerManager) CreateServer(name, path string, jarFileID uint, additio
 		return fmt.Errorf("failed to load server details: %w", err)
 	}
 
-	sm.servers[name] = server.NewServer(serverModel)
-	return nil
-}
-
-func (sm *ServerManager) UploadJarFile(name, version string, file io.Reader, size int64) (*model.JarFile, error) {
-	bucketName := "mcgonalds-jar-files"
-	objectName := fmt.Sprintf("%s-%s.jar", name, version)
-
-	// Ensure the bucket exists
-	fmt.Println("Uploading jar file to MinIO")
-	fmt.Println("Bucket name:", bucketName)
-
-	exists, errBucketExists := sm.minioClient.BucketExists(context.Background(), bucketName)
-	if errBucketExists == nil && exists {
-		// We already own this bucket
-	} else {
-		return nil, fmt.Errorf("failed to create bucket: %w", errBucketExists)
+	// Create server directory
+	serverEnvDir := filepath.Join(path, "env")
+	if err := os.MkdirAll(serverEnvDir, 0755); err != nil {
+		return fmt.Errorf("failed to create server environment directory: %w", err)
 	}
 
-	// Upload the file
-	_, err := sm.minioClient.PutObject(context.Background(), bucketName, objectName, file, size, minio.PutObjectOptions{ContentType: "application/java-archive"})
-	if err != nil {
-		return nil, fmt.Errorf("failed to upload file: %w", err)
-	}
-
-	// Generate the URL for the uploaded object
-	url := fmt.Sprintf("http://%s/%s/%s", sm.minioClient.EndpointURL().Host, bucketName, objectName)
-
-	// Create the database record
-	jarFile := &model.JarFile{
-		Name:    name,
-		Version: version,
-		Path:    url,
-	}
-
-	if err := sm.db.Create(jarFile).Error; err != nil {
-		return nil, fmt.Errorf("failed to create jar file record: %w", err)
-	}
-
-	return jarFile, nil
-}
-
-func (sm *ServerManager) UploadAdditionalFile(name, fileType string, file io.Reader, size int64) (*model.AdditionalFile, error) {
-	bucketName := "mcgonalds-additional-files"
-	objectName := fmt.Sprintf("%s.zip", name)
-
-	// Ensure the bucket exists
-	err := sm.minioClient.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{})
-	if err != nil {
-		// Check to see if we already own this bucket
-		exists, errBucketExists := sm.minioClient.BucketExists(context.Background(), bucketName)
-		if errBucketExists == nil && exists {
-			// We already own this bucket
-		} else {
-			return nil, fmt.Errorf("failed to create bucket: %w", err)
+	// Handle symbolic links for common resources
+	if serverModel.JarFileID != 0 {
+		jarSource := filepath.Join(sm.commonDir, "jar_files", serverModel.JarFile.Path)
+		jarDest := filepath.Join(serverEnvDir, "file.jar")
+		if err := utils.CreateSymlink(jarSource, jarDest); err != nil {
+			return fmt.Errorf("failed to create symlink for jar file: %w", err)
 		}
 	}
 
-	// Upload the file
-	_, err = sm.minioClient.PutObject(context.Background(), bucketName, objectName, file, size, minio.PutObjectOptions{ContentType: "application/zip"})
-	if err != nil {
-		return nil, fmt.Errorf("failed to upload file: %w", err)
+	for _, additionalFile := range serverModel.AdditionalFiles {
+		source := filepath.Join(sm.commonDir, "additional_files", additionalFile.Path)
+		dest := filepath.Join(serverEnvDir, additionalFile.Name)
+		if err := utils.CreateSymlink(source, dest); err != nil {
+			return fmt.Errorf("failed to create symlink for additional file: %w", err)
+		}
 	}
 
-	// Generate the URL for the uploaded object
-	url := fmt.Sprintf("http://%s/%s/%s", sm.minioClient.EndpointURL().Host, bucketName, objectName)
-
-	// Create the database record
-	additionalFile := &model.AdditionalFile{
-		Name: name,
-		Type: fileType,
-		Path: url,
-	}
-
-	if err := sm.db.Create(additionalFile).Error; err != nil {
-		return nil, fmt.Errorf("failed to create additional file record: %w", err)
-	}
-
-	return additionalFile, nil
+	sm.servers[name] = server.NewServer(serverModel)
+	return nil
 }
 
 func (sm *ServerManager) GetServer(name string) (*server.Server, error) {
@@ -149,7 +87,7 @@ func (sm *ServerManager) GetServer(name string) (*server.Server, error) {
 	srv, exists := sm.servers[name]
 	if !exists {
 		var dbServer model.Server
-		if err := sm.db.Where("name = ?", name).First(&dbServer).Error; err != nil {
+		if err := sm.db.Preload("JarFile").Preload("AdditionalFiles").Where("name = ?", name).First(&dbServer).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return nil, fmt.Errorf("server %s not found", name)
 			}
@@ -158,87 +96,268 @@ func (sm *ServerManager) GetServer(name string) (*server.Server, error) {
 		srv = server.NewServer(&dbServer)
 		sm.servers[name] = srv
 	}
-
 	return srv, nil
-}
-
-func (sm *ServerManager) ListServers() ([]*server.Server, error) {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
-
-	var servers []*server.Server
-	for _, srv := range sm.servers {
-		servers = append(servers, srv)
-	}
-
-	return servers, nil
 }
 
 func (sm *ServerManager) DeleteServer(name string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	srv, exists := sm.servers[name]
-	if !exists {
+	if _, exists := sm.servers[name]; !exists {
 		return fmt.Errorf("server %s not found", name)
 	}
 
-	if srv.IsRunning() {
-		return fmt.Errorf("cannot delete a running server: %s", name)
-	}
-
-	if err := sm.db.Delete(&model.Server{}, "name = ?", name).Error; err != nil {
-		return fmt.Errorf("failed to delete server from database: %w", err)
-	}
-
 	delete(sm.servers, name)
-	return nil
+	return sm.db.Where("name = ?", name).Delete(&model.Server{}).Error
 }
 
 func (sm *ServerManager) StartServer(name string) error {
-	srv, err := sm.GetServer(name)
-	if err != nil {
-		return err
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	srv, exists := sm.servers[name]
+	if !exists {
+		return fmt.Errorf("server %s not found", name)
 	}
 
 	return srv.Start()
 }
 
 func (sm *ServerManager) StopServer(name string) error {
-	srv, err := sm.GetServer(name)
-	if err != nil {
-		return err
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	srv, exists := sm.servers[name]
+	if !exists {
+		return fmt.Errorf("server %s not found", name)
 	}
 
 	return srv.Stop()
 }
 
 func (sm *ServerManager) RestartServer(name string) error {
-	srv, err := sm.GetServer(name)
-	if err != nil {
-		return err
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	srv, exists := sm.servers[name]
+	if !exists {
+		return fmt.Errorf("server %s not found", name)
 	}
 
-	if err := srv.Stop(); err != nil {
-		return err
-	}
-
-	return srv.Start()
+	return srv.Restart()
 }
 
-func (sm *ServerManager) SendCommand(name, command string) error {
-	srv, err := sm.GetServer(name)
-	if err != nil {
-		return err
+func (sm *ServerManager) SendCommand(name, command string) (string, error) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	srv, exists := sm.servers[name]
+	if !exists {
+		return "", fmt.Errorf("server %s not found", name)
 	}
 
-	return srv.SendCommand(command)
+	if err := srv.SendCommand(command); err != nil {
+		return "", err
+	}
+
+	return "Command executed", nil
 }
 
-func (sm *ServerManager) ListFiles(name string) ([]string, error) {
-	server, err := sm.GetServer(name)
+func (sm *ServerManager) UploadJarFile(name, version string, file io.Reader, baseName string, size int64, serverID string, isCommon bool) (*model.JarFile, error) {
+	var jarDir string
+	currentDir, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	return server.ListFiles()
+
+	if serverID != "" {
+		// Server-specific jar file
+		jarDir = filepath.Join(currentDir, sm.commonDir, "game_servers", serverID)
+	} else if isCommon {
+		// Common jar file
+		jarDir = filepath.Join(currentDir, sm.commonDir, "jar_files")
+	} else {
+		return nil, fmt.Errorf("invalid arguments: must provide either serverID or set isCommon to true")
+	}
+
+	if err := os.MkdirAll(jarDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create jar directory: %w", err)
+	}
+
+	objectPath := filepath.Join(jarDir, baseName)
+	// Log the jar file upload
+	log.Printf("Uploading JAR file: %s (version: %s, size: %d bytes)", name, version, size)
+	log.Printf("Destination path: %s", objectPath)
+
+	if isCommon {
+		log.Printf("Uploading as common JAR file")
+	} else if serverID != "" {
+		log.Printf("Uploading for server ID: %s", serverID)
+	}
+
+	destFile, err := os.Create(objectPath)
+	if err != nil {
+		log.Printf("Error creating JAR file: %v", err)
+		return nil, fmt.Errorf("failed to create jar file: %w", err)
+	}
+	defer destFile.Close()
+
+	bytesWritten, err := io.Copy(destFile, file)
+	if err != nil {
+		log.Printf("Error saving JAR file: %v", err)
+		return nil, fmt.Errorf("failed to save jar file: %w", err)
+	}
+	log.Printf("Successfully wrote %d bytes to %s", bytesWritten, objectPath)
+
+	jarFile := &model.JarFile{
+		Name:     name,
+		Version:  version,
+		Path:     objectPath,
+		IsCommon: isCommon,
+	}
+
+	if err := sm.db.Create(jarFile).Error; err != nil {
+		log.Printf("Error creating JAR file record in database: %v", err)
+		return nil, fmt.Errorf("failed to create jar file record: %w", err)
+	}
+	log.Printf("Successfully created JAR file record in database with ID: %d", jarFile.ID)
+
+	return jarFile, nil
+}
+
+func (sm *ServerManager) UploadAdditionalFile(name, fileType string, file io.Reader, size int64) (*model.AdditionalFile, error) {
+	additionalDir := filepath.Join(sm.commonDir, "additional_files")
+	if err := os.MkdirAll(additionalDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create additional files directory: %w", err)
+	}
+
+	objectName := fmt.Sprintf("%s.zip", name)
+	objectPath := filepath.Join(additionalDir, objectName)
+
+	destFile, err := os.Create(objectPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create additional file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, file); err != nil {
+		return nil, fmt.Errorf("failed to save additional file: %w", err)
+	}
+
+	additionalFile := &model.AdditionalFile{
+		Name: name,
+		Type: fileType,
+		Path: objectName,
+	}
+
+	if err := sm.db.Create(additionalFile).Error; err != nil {
+		return nil, fmt.Errorf("failed to create additional file record: %w", err)
+	}
+
+	return additionalFile, nil
+}
+
+func (sm *ServerManager) UploadModPack(originalFilename string, file io.Reader, size int64, serverID string, isCommon bool) (*model.ModPack, error) {
+	var modPackDir string
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current working directory: %w", err)
+	}
+	if serverID != "" {
+		// Server-specific mod pack
+		modPackDir = filepath.Join(currentDir, sm.commonDir, "game_servers", serverID, "mods")
+	} else if isCommon {
+		// Common mod pack
+		modPackDir = filepath.Join(currentDir, sm.commonDir, "mod_packs")
+	} else {
+		return nil, fmt.Errorf("invalid arguments: must provide either serverID or set isCommon to true")
+	}
+
+	if err := os.MkdirAll(modPackDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create mod pack directory: %w", err)
+	}
+
+	objectPath := filepath.Join(modPackDir, originalFilename)
+
+	destFile, err := os.Create(objectPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mod pack file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, file); err != nil {
+		return nil, fmt.Errorf("failed to save mod pack file: %w", err)
+	}
+
+	modPack := &model.ModPack{
+		Name:     originalFilename,
+		Path:     objectPath,
+		IsCommon: isCommon,
+	}
+
+	if err := sm.db.Create(modPack).Error; err != nil {
+		return nil, fmt.Errorf("failed to create mod pack record: %w", err)
+	}
+
+	return modPack, nil
+}
+
+// SetupServer sets up the server by reading its config and loading necessary files
+func (sm *ServerManager) SetupServer(serverName string) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	// Fetch server model from database
+	var serverModel model.Server
+	if err := sm.db.Where("name = ?", serverName).First(&serverModel).Error; err != nil {
+		return fmt.Errorf("server %s not found: %w", serverName, err)
+	}
+
+	// Fetch server configuration
+	var config model.ServerConfig
+	if err := sm.db.Preload("JarFile").Preload("ModPack").Where("server_id = ?", serverModel.ID).First(&config).Error; err != nil {
+		return fmt.Errorf("failed to fetch server config: %w", err)
+	}
+
+	envDir := filepath.Join(serverModel.Path, "env")
+	if err := os.MkdirAll(envDir, 0755); err != nil {
+		return fmt.Errorf("failed to create environment directory: %w", err)
+	}
+
+	// Symlink or copy JAR file
+	if config.JarFile.ID != 0 {
+		jarSource := config.JarFile.Path
+		jarDest := filepath.Join(envDir, "server.jar")
+		if err := utils.CreateSymlink(jarSource, jarDest); err != nil {
+			return fmt.Errorf("failed to symlink jar file: %w", err)
+		}
+	}
+
+	// Symlink or copy Mod Pack
+	if config.ModPack != nil {
+		modPackSource := config.ModPack.Path
+		modPackDest := filepath.Join(envDir, "mods")
+		if err := utils.CreateSymlink(modPackSource, modPackDest); err != nil {
+			return fmt.Errorf("failed to symlink mod pack: %w", err)
+		}
+	}
+
+	// Create or update the server instance in the servers map
+	srv := server.NewServer(&serverModel)
+	sm.servers[serverName] = srv
+
+	return nil
+}
+
+// ListServers returns a list of all servers
+func (sm *ServerManager) ListServers() ([]model.Server, error) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+
+	var servers []model.Server
+	if err := sm.db.Find(&servers).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch servers from database: %w", err)
+	}
+
+	return servers, nil
 }

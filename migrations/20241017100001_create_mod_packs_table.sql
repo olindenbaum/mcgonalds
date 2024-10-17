@@ -1,0 +1,14 @@
+-- +goose Up
+CREATE TABLE mod_packs (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    version VARCHAR(50) NOT NULL,
+    path VARCHAR(255) NOT NULL,
+    is_common BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- +goose Down
+DROP TABLE mod_packs;

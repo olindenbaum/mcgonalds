@@ -1,58 +1,59 @@
 package config
 
 import (
-	"fmt"
+	"errors"
+	"os"
 
-	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	MinIO    MinIOConfig
-}
-
-type ServerConfig struct {
-	Port     int
-	LogLevel string
-}
-
 type DatabaseConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  bool   `yaml:"sslmode"`
+}
+
+type Config struct {
+	Server struct {
+		Port string `yaml:"port"`
+	} `yaml:"server"`
+
+	Database DatabaseConfig `yaml:"database"`
+
+	// Added local storage paths
+	Storage struct {
+		CommonDir string `yaml:"common_dir"`
+	} `yaml:"storage"`
+
+	JWTConfig JWTConfig `yaml:"jwt"`
 }
 
 type JWTConfig struct {
-	Secret     string
-	Expiration string
-}
-
-type MinIOConfig struct {
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	UseSSL    bool
+	Secret     string `yaml:"secret"`
+	Expiration string `yaml:"expiration"`
 }
 
 func LoadConfig() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AutomaticEnv()
+	cfg := &Config{}
 
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	file, err := os.Open("config.global.yaml")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(cfg); err != nil {
+		return nil, err
 	}
 
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	// Validate configurations
+	if cfg.Storage.CommonDir == "" {
+		return nil, errors.New("storage.common_dir must be set in config.yml")
 	}
 
-	return &config, nil
+	return cfg, nil
 }

@@ -1,0 +1,18 @@
+server:
+  port: 8080
+  log_level: debug
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: changeme
+  dbname: mcgonalds_db
+  sslmode: false
+
+jwt:
+  secret: your_jwt_secret_key
+  expiration: 24h
+
+storage:
+  common_dir: "/game_servers/shared"

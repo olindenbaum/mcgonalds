@@ -1,14 +1,14 @@
 # Database connection string (replace with your actual details)
-DB_CONNECTION_STRING := "postgres://username:password@localhost:5432/database_name?sslmode=disable"
+DB_CONNECTION_STRING := "postgres://postgres:changeme@localhost:5432/mcgonalds_db?sslmode=disable"
 
 # Default target
 .PHONY: all
-all: run
+all: setup run
 
 # Run the application
 .PHONY: run
 run:
-	go run cmd/server/main.go
+	go run main.go
 
 # Run database migrations
 .PHONY: migrate
@@ -25,10 +25,6 @@ swagger:
 build:
 	go build -o mcgonalds cmd/server/main.go
 
-# Clean built binaries
-.PHONY: clean
-clean:
-	rm -f mcgonalds
 
 # Run tests
 .PHONY: test
@@ -51,3 +47,15 @@ help:
 	@echo "  test     - Run tests"
 	@echo "  dev      - Run migrations, generate Swagger docs, and start the app"
 	@echo "  help     - Show this help message"
+
+# Create necessary directories
+.PHONY: setup
+setup:
+	mkdir game_servers/shared/jar_files
+	mkdir /game_servers/shared/additional_files
+	mkdir /game_servers/servers
+
+
+.PHONY: migration
+migration:
+	goose -dir migrations create $(name) sql

@@ -24,67 +24,9 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/additional-files": {
-            "post": {
-                "description": "Upload an additional file (e.g., modpack)",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "additional-files"
-                ],
-                "summary": "Upload an additional file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Name of the additional file",
-                        "name": "name",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Type of the additional file",
-                        "name": "type",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "The additional file to upload",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/model.AdditionalFile"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/jar-files": {
             "post": {
-                "description": "Upload a new Minecraft server jar file",
+                "description": "Upload a shared JAR file to be used by multiple servers",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -94,25 +36,25 @@ const docTemplate = `{
                 "tags": [
                     "jar-files"
                 ],
-                "summary": "Upload a jar file",
+                "summary": "Upload a shared JAR file",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Name of the jar file",
+                        "description": "Name of the JAR file",
                         "name": "name",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Version of the jar file",
+                        "description": "Version of the JAR file",
                         "name": "version",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "file",
-                        "description": "The jar file to upload",
+                        "description": "The JAR file to upload",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -128,13 +70,78 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mod-packs": {
+            "post": {
+                "description": "Upload a shared mod pack to be used by multiple servers",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mod-packs"
+                ],
+                "summary": "Upload a shared mod pack",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name of the mod pack",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Version of the mod pack",
+                        "name": "version",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Type of the mod pack (e.g., zip, folder)",
+                        "name": "type",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "The mod pack file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.ModPack"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -163,7 +170,51 @@ const docTemplate = `{
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new Minecraft server with specified jar file and additional files",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Create a new Minecraft server",
+                "parameters": [
+                    {
+                        "description": "Server creation request",
+                        "name": "server",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.CreateServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/model.Server"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -178,11 +229,11 @@ const docTemplate = `{
                 "tags": [
                     "servers"
                 ],
-                "summary": "Get a Minecraft server",
+                "summary": "Get a specific Minecraft server",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -198,13 +249,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -221,26 +272,32 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -262,7 +319,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -273,7 +330,10 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.CommandRequest"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 ],
@@ -281,25 +341,28 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.SuccessResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -318,7 +381,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -328,19 +391,22 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.SuccessResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -359,7 +425,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -369,19 +435,22 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.SuccessResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -400,7 +469,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Server name",
+                        "description": "Server Name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -410,19 +479,130 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.SuccessResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/servers/{name}/upload-jar": {
+            "post": {
+                "description": "Upload a JAR file to a specific server, either selecting a common JAR or uploading a new one",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Upload JAR file for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "JAR file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "JAR file uploaded successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/servers/{name}/upload-modpack": {
+            "post": {
+                "description": "Upload a mod pack to a specific server, either selecting a common mod pack or uploading a new one",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Upload mod pack for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Mod pack file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Mod pack uploaded successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
                         }
                     }
                 }
@@ -430,30 +610,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "handler.CommandRequest": {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "handler.SuccessResponse": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
         "model.AdditionalFile": {
             "type": "object",
             "properties": {
@@ -481,6 +637,51 @@ const docTemplate = `{
                 }
             }
         },
+        "model.CreateServerRequest": {
+            "type": "object",
+            "required": [
+                "executable_command",
+                "jar_file_id",
+                "name",
+                "path"
+            ],
+            "properties": {
+                "executable_command": {
+                    "type": "string"
+                },
+                "jar_file_id": {
+                    "description": "ID of the JAR file",
+                    "type": "integer"
+                },
+                "mod_pack_id": {
+                    "description": "Optional ID of the mod pack",
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "Invalid input data"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Bad Request"
+                },
+                "status": {
+                    "type": "integer",
+                    "example": 400
+                }
+            }
+        },
         "model.JarFile": {
             "type": "object",
             "properties": {
@@ -492,6 +693,38 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "is_common": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ModPack": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_common": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -510,13 +743,13 @@ const docTemplate = `{
         "model.Server": {
             "type": "object",
             "properties": {
-                "additionalFileIDs": {
+                "additional_file_ids": {
                     "type": "array",
                     "items": {
                         "type": "integer"
                     }
                 },
-                "additionalFiles": {
+                "additional_files": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/model.AdditionalFile"
@@ -531,10 +764,10 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "jarFile": {
+                "jar_file": {
                     "$ref": "#/definitions/model.JarFile"
                 },
-                "jarFileID": {
+                "jar_file_id": {
                     "type": "integer"
                 },
                 "name": {
@@ -542,6 +775,44 @@ const docTemplate = `{
                 },
                 "path": {
                     "type": "string"
+                },
+                "server_config": {
+                    "$ref": "#/definitions/model.ServerConfig"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ServerConfig": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "executable_command": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "jar_file": {
+                    "$ref": "#/definitions/model.JarFile"
+                },
+                "jar_file_id": {
+                    "type": "integer"
+                },
+                "mod_pack": {
+                    "$ref": "#/definitions/model.ModPack"
+                },
+                "mod_pack_id": {
+                    "type": "integer"
+                },
+                "server_id": {
+                    "type": "integer"
                 },
                 "updated_at": {
                     "type": "string"

@@ -1,0 +1,6 @@
+{
+    "status": "running",
+    "last_command": "java -jar file.jar -Xmx2G -Xms2G",
+    "start_time": "2024-10-17T10:30:00Z",
+    "active_players": 5
+  }
