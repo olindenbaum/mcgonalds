@@ -7,6 +7,7 @@ function ServerList() {
 
   useEffect(() => {
     fetchServers();
+    // Optionally, set up polling or WebSocket connections for real-time status updates
   }, []);
 
   const fetchServers = async () => {
@@ -24,7 +25,7 @@ function ServerList() {
       <ul>
         {servers.map((server) => (
           <li key={server.id}>
-            <Link to={`/server/${server.id}`}>{server.name}</Link>
+            <Link to={`/server/${server.id}`}>{server.name}</Link> - Status: {server.status}
           </li>
         ))}
       </ul>

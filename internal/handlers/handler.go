@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/olindenbaum/mcgonalds/internal/config"
 	"github.com/olindenbaum/mcgonalds/internal/model"
 	"github.com/olindenbaum/mcgonalds/internal/server_manager"
@@ -32,18 +34,20 @@ func NewHandler(db *gorm.DB, sm *server_manager.ServerManager, config *config.Co
 func (h *Handler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/servers", h.CreateServer).Methods("POST")
 	r.HandleFunc("/servers", h.ListServers).Methods("GET")
-	r.HandleFunc("/servers/{name}", h.GetServer).Methods("GET")
-	r.HandleFunc("/servers/{name}", h.DeleteServer).Methods("DELETE")
-	r.HandleFunc("/servers/{name}/start", h.StartServer).Methods("POST")
-	r.HandleFunc("/servers/{name}/stop", h.StopServer).Methods("POST")
-	r.HandleFunc("/servers/{name}/restart", h.RestartServer).Methods("POST")
-	r.HandleFunc("/servers/{name}/command", h.SendCommand).Methods("POST")
-	r.HandleFunc("/servers/{name}/upload-jar", h.UploadJarFile).Methods("POST")
-	r.HandleFunc("/servers/{name}/upload-modpack", h.UploadModPack).Methods("POST")
+	r.HandleFunc("/servers/{id}", h.GetServer).Methods("GET")
+	r.HandleFunc("/servers/{id}", h.DeleteServer).Methods("DELETE")
+	r.HandleFunc("/servers/{id}/start", h.StartServer).Methods("POST")
+	r.HandleFunc("/servers/{id}/stop", h.StopServer).Methods("POST")
+	r.HandleFunc("/servers/{id}/restart", h.RestartServer).Methods("POST")
+	r.HandleFunc("/servers/{id}/command", h.SendCommand).Methods("POST")
+	r.HandleFunc("/servers/{id}/upload-jar", h.UploadJarFile).Methods("POST")
+	r.HandleFunc("/servers/{id}/upload-modpack", h.UploadModPack).Methods("POST")
 	r.HandleFunc("/jar-files", h.UploadSharedJarFile).Methods("POST")
 	r.HandleFunc("/mod-packs", h.UploadSharedModPack).Methods("POST")
 	r.HandleFunc("/jar-files", h.GetCommonJarFiles).Methods("GET")
 	r.HandleFunc("/mod-packs", h.GetCommonModPacks).Methods("GET")
+	r.HandleFunc("/servers/{id}/output", h.GetServerOutput).Methods("GET")
+	r.HandleFunc("/servers/{id}/output/ws", h.GetServerOutputWS).Methods("GET")
 	// r.HandleFunc("/additional-files", h.UploadAdditionalFile).Methods("POST")
 }
 
@@ -249,7 +253,7 @@ func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	serverId := vars["id"]
-
+	fmt.Printf("Getting server with ID: %s", serverId)
 	id, err := strconv.ParseUint(serverId, 10, 8)
 	if err != nil {
 		http.Error(w, "Invalid server ID", http.StatusBadRequest)
@@ -264,9 +268,9 @@ func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
+	serverDetails := server.GetServerDetails()
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(server)
+	json.NewEncoder(w).Encode(serverDetails)
 }
 
 // DeleteServer godoc
@@ -298,15 +302,23 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Server deleted successfully"})
 }
 
+// StartServerRequest represents the payload for starting a server
+type StartServerRequest struct {
+	RAM  string `json:"ram"`
+	Port string `json:"port"`
+}
+
 // StartServer godoc
 // @Summary Start a Minecraft server
-// @Description Start a specific Minecraft server by name
+// @Description Start a specific Minecraft server by name with customizable RAM and port
 // @Tags servers
+// @Accept json
 // @Produce json
 // @Param id path uint8 true "Server ID"
+// @Param StartServerRequest body StartServerRequest true "RAM and Port"
 // @Success 200 {object} map[string]string
-// @Failure 404 {object{ model.ErrorResponse
-// @Failure 500 {object{ model.ErrorResponse
+// @Failure 404 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
 // @Router /servers/{id}/start [post]
 func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -318,7 +330,33 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ServerManager.StartServer(uint8(id)); err != nil {
+	var startReq StartServerRequest
+	if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Construct the executable command with RAM and Port
+	// executableCommand, err := h.ServerManager.GetExecutableCommand(uint8(id))
+	// if err != nil {
+	// 	log.Printf("Error getting executable command: %v", err)
+	// 	http.Error(w, "Failed to get executable command", http.StatusInternalServerError)
+	// 	return
+	// }
+	// customCommand := executableCommand + " -Xmx" + startReq.RAM + " -Xms" + startReq.RAM + " --port " + startReq.Port
+
+	// // Update the server configuration if needed
+	// err = h.ServerManager.UpdateServerCommand(uint8(id), customCommand)
+	if err != nil {
+		log.Printf("Error updating server command: %v", err)
+		http.Error(w, "Failed to update server command", http.StatusInternalServerError)
+		return
+	}
+
+	// Start the server
+	err = h.ServerManager.StartServer(uint8(id))
+	if err != nil {
+		log.Printf("Error starting server: %v", err)
 		http.Error(w, "Failed to start server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -672,6 +710,84 @@ func (h *Handler) GetCommonModPacks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(modPacks)
+}
+
+// GetServerOutput godoc
+// @Summary Get server output
+// @Description Retrieve the output stream of a specific Minecraft server
+// @Tags servers
+// @Produce json
+// @Param id path uint8 true "Server ID"
+// @Success 200 {object} map[string]string
+// @Failure 404 {object} model.ErrorResponse
+// @Failure 500 {object} model.ErrorResponse
+// @Router /servers/{id}/output [get]
+func (h *Handler) GetServerOutput(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	serverId := vars["name"]
+
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	output, err := h.ServerManager.GetServerOutput(uint8(id))
+	if err != nil {
+		log.Printf("Error fetching server output: %v", err)
+		http.Error(w, "Failed to fetch server output", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"output": output})
+}
+
+// Upgrader specifies parameters for upgrading an HTTP connection to a WebSocket connection.
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Adjust this as needed for security
+	},
+}
+
+// GetServerOutputWS godoc
+// @Summary Get server output via WebSocket
+// @Description Establish a WebSocket connection to receive real-time server output
+// @Tags servers
+// @Param id path uint8 true "Server ID"
+// @Router /servers/{id}/output/ws [get]
+func (h *Handler) GetServerOutputWS(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	serverId := vars["id"]
+
+	id, err := strconv.ParseUint(serverId, 10, 8)
+	if err != nil {
+		http.Error(w, "Invalid server ID", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Subscribe to server output
+	outputChan, err := h.ServerManager.SubscribeOutput(uint8(id))
+	if err != nil {
+		log.Printf("Error subscribing to server output: %v", err)
+		return
+	}
+	defer h.ServerManager.UnsubscribeOutput(uint8(id), outputChan)
+
+	for msg := range outputChan {
+		err := conn.WriteMessage(websocket.TextMessage, []byte(msg))
+		if err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			break
+		}
+	}
 }
 
 // // UploadAdditionalFile godoc

@@ -3,11 +3,29 @@ package db
 import (
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/olindenbaum/mcgonalds/internal/config"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+var (
+	instance *gorm.DB
+	once     sync.Once
+)
+
+func GetDB() *gorm.DB {
+	return instance
+}
+
+func InitDatabase(cfg *config.DatabaseConfig) error {
+	var err error
+	once.Do(func() {
+		instance, err = NewDatabase(cfg)
+	})
+	return err
+}
 
 func NewDatabase(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	var dsn string

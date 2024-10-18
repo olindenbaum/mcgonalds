@@ -33,11 +33,12 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	database, err := db.NewDatabase(&cfg.Database)
+	err = db.InitDatabase(&cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
+	database := db.GetDB()
 	// Initialize ServerManager with local storage directory (e.g., "/game_servers/shared")
 	sharedDir := "/game_servers/shared"
 	sm, err := server_manager.NewServerManager(database, sharedDir)

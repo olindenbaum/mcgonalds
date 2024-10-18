@@ -1,6 +1,7 @@
 package server_manager
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -15,18 +16,34 @@ import (
 )
 
 type ServerManager struct {
-	db        *gorm.DB
-	servers   map[uint8]*server.Server
-	mutex     sync.RWMutex
-	commonDir string
+	db            *gorm.DB
+	servers       map[uint8]*server.Server
+	mutex         sync.RWMutex
+	commonDir     string
+	outputStreams map[uint8][]chan string
+	streamMutex   sync.RWMutex
 }
 
 func NewServerManager(db *gorm.DB, commonDir string) (*ServerManager, error) {
-	return &ServerManager{
-		db:        db,
-		servers:   make(map[uint8]*server.Server),
-		commonDir: commonDir,
-	}, nil
+	sm := &ServerManager{
+		db:            db,
+		servers:       make(map[uint8]*server.Server),
+		commonDir:     commonDir,
+		outputStreams: make(map[uint8][]chan string),
+	}
+
+	// Fetch all existing servers from the database
+	var dbServers []model.Server
+	if err := db.Find(&dbServers).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch existing servers: %w", err)
+	}
+
+	// Populate the servers map
+	for _, dbServer := range dbServers {
+		sm.servers[uint8(dbServer.ID)] = server.NewServer(&dbServer)
+	}
+
+	return sm, nil
 }
 
 func (sm *ServerManager) CreateServer(name, path, executableCommand string, jarFile *model.JarFile, modPack *model.ModPack, additionalFileIDs []uint) (uint8, error) {
@@ -142,10 +159,12 @@ func (sm *ServerManager) GetServer(id uint8) (*server.Server, error) {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
+	fmt.Printf("Getting server with ID: %d", id)
 	srv, exists := sm.servers[id]
+	fmt.Printf("Exists: %v", exists)
 	if !exists {
 		var dbServer model.Server
-		if err := sm.db.Preload("JarFile").Where("id = ?", id).First(&dbServer).Error; err != nil {
+		if err := sm.db.Where("id = ?", id).First(&dbServer).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return nil, fmt.Errorf("server %s not found", id)
 			}
@@ -154,6 +173,10 @@ func (sm *ServerManager) GetServer(id uint8) (*server.Server, error) {
 		srv = server.NewServer(&dbServer)
 		sm.servers[id] = srv
 	}
+
+	fmt.Printf("Server: %v\n", srv)
+	details := srv.GetServerDetails()
+	fmt.Printf("Details: %v\n", details)
 	return srv, nil
 }
 
@@ -170,15 +193,34 @@ func (sm *ServerManager) DeleteServer(id uint8) error {
 }
 
 func (sm *ServerManager) StartServer(id uint8) error {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
 
 	srv, exists := sm.servers[id]
 	if !exists {
-		return fmt.Errorf("server %s not found", id)
+		// Initialize the server instance
+		var serverModel model.Server
+		if err := sm.db.Where("id = ?", id).First(&serverModel).Error; err != nil {
+			return fmt.Errorf("server not found: %w", err)
+		}
+		srv = server.NewServer(&serverModel)
+		sm.servers[id] = srv
 	}
 
-	return srv.Start()
+	// Ensure required files are present
+	if err := sm.verifyRequiredFiles(id); err != nil {
+		return err
+	}
+
+	// Start the server
+	if err := srv.Start(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
+	// Optionally, manage output stream
+	go sm.streamServerOutput(id, srv)
+
+	return nil
 }
 
 func (sm *ServerManager) StopServer(id uint8) error {
@@ -460,4 +502,142 @@ func (sm *ServerManager) GetModPacks(common bool) ([]model.ModPack, error) {
 		return nil, err
 	}
 	return modPacks, nil
+}
+
+// UpdateServerCommand updates the executable command for a server
+func (sm *ServerManager) UpdateServerCommand(id uint8, command string) error {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	var serverModel model.Server
+	if err := sm.db.Where("id = ?", id).First(&serverModel).Error; err != nil {
+		return fmt.Errorf("server not found: %w", err)
+	}
+
+	serverConfig, err := sm.getServerConfig(id)
+	if err != nil {
+		return fmt.Errorf("failed to get server config: %w", err)
+	}
+
+	serverConfig.ExecutableCommand = command
+	if err := sm.db.Save(&serverConfig).Error; err != nil {
+		return fmt.Errorf("failed to update server command: %w", err)
+	}
+
+	return nil
+}
+
+// verifyRequiredFiles checks if necessary files are present in the server directory
+func (sm *ServerManager) verifyRequiredFiles(id uint8) error {
+	var serverModel model.Server
+	if err := sm.db.Where("id = ?", id).First(&serverModel).Error; err != nil {
+		return fmt.Errorf("server not found: %w", err)
+	}
+
+	// envDir := fmt.Sprintf("%s/env", serverModel.Path)
+	// requiredFiles := []string{"server.jar", "start.sh"}
+
+	// for _, file := range requiredFiles {
+	// 	filePath := fmt.Sprintf("%s/%s", envDir, file)
+	// 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	// 		return fmt.Errorf("required file %s is missing", file)
+	// 	}
+	// }
+
+	return nil
+}
+
+// updateServerOutput appends a new line to the server's output
+func (sm *ServerManager) updateServerOutput(id uint8, line string) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	// This is a simplistic implementation.
+	// For a scalable solution, consider using a concurrent safe data structure or streaming.
+	// You might also implement WebSockets or Server-Sent Events (SSE) to push updates to the frontend.
+	var serverOutput bytes.Buffer
+	serverOutput.WriteString(line + "\n")
+	// Save the output buffer to a map or database as needed
+	// For demonstration, we'll skip persistent storage
+}
+
+// GetServerOutput retrieves the accumulated output for a server
+func (sm *ServerManager) GetServerOutput(id uint8) (string, error) {
+	// Implement a way to retrieve the server's output
+	// This could be from an in-memory buffer, a file, or a database
+	// For simplicity, we'll return a placeholder
+	return "Server output would appear here...", nil
+}
+
+// getServerConfig retrieves the server's configuration
+func (sm *ServerManager) getServerConfig(id uint8) (*model.ServerConfig, error) {
+	var config model.ServerConfig
+	if err := sm.db.Where("server_id = ?", id).First(&config).Error; err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+// SubscribeOutput allows handlers to receive server output
+func (sm *ServerManager) SubscribeOutput(id uint8) (chan string, error) {
+	sm.streamMutex.Lock()
+	defer sm.streamMutex.Unlock()
+
+	ch := make(chan string, 100)
+	sm.outputStreams[id] = append(sm.outputStreams[id], ch)
+	return ch, nil
+}
+
+// UnsubscribeOutput removes a handler from receiving server output
+func (sm *ServerManager) UnsubscribeOutput(id uint8, ch chan string) {
+	sm.streamMutex.Lock()
+	defer sm.streamMutex.Unlock()
+
+	streams := sm.outputStreams[id]
+	for i, subscriber := range streams {
+		if subscriber == ch {
+			sm.outputStreams[id] = append(streams[:i], streams[i+1:]...)
+			close(ch)
+			break
+		}
+	}
+}
+
+// streamServerOutput sends server output to all subscribers
+func (sm *ServerManager) streamServerOutput(id uint8, srv *server.Server) {
+	for line := range srv.GetConsole() {
+		sm.streamMutex.RLock()
+		subscribers := sm.outputStreams[id]
+		sm.streamMutex.RUnlock()
+
+		for _, ch := range subscribers {
+			select {
+			case ch <- line:
+			default:
+				// Handle slow consumers or drop messages
+			}
+		}
+	}
+}
+
+func (sm *ServerManager) GetExecutableCommand(id uint8) (string, error) {
+	_, ok := sm.servers[id]
+	if !ok {
+		return "", fmt.Errorf("server %d not found", id)
+	}
+
+	config, err := sm.GetServerConfig(id)
+	if err != nil {
+		return "", fmt.Errorf("failed to get server config: %w", err)
+	}
+
+	return config.ExecutableCommand, nil
+}
+
+func (sm *ServerManager) GetServerConfig(id uint8) (*model.ServerConfig, error) {
+	var config model.ServerConfig
+	if err := sm.db.Where("server_id = ?", id).First(&config).Error; err != nil {
+		return nil, fmt.Errorf("failed to get server config: %w", err)
+	}
+	return &config, nil
 }

@@ -1,2 +1,2 @@
 #!/bin/bash
-assss
+java -jar server.jar

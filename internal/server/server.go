@@ -2,14 +2,17 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/olindenbaum/mcgonalds/internal/db"
 	"github.com/olindenbaum/mcgonalds/internal/model"
 )
 
@@ -32,6 +35,10 @@ func NewServer(model *model.Server) *Server {
 	}
 }
 
+func (s *Server) GetConsole() chan string {
+	return s.console
+}
+
 func (s *Server) Start() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -40,12 +47,29 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server is already running")
 	}
 
-	jarPath := filepath.Join(s.model.Path, "env", "file.jar")
-	s.cmd = exec.Command("java", "-jar", jarPath)
+	config, err := s.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get server config: %w", err)
+	}
+
+	fmt.Printf("ExecutableCommand: %s\n", config.ExecutableCommand)
+
+	// Split the command into the executable and its arguments
+	parts := strings.Fields(config.ExecutableCommand)
+	if len(parts) == 0 {
+		return fmt.Errorf("invalid executable command")
+	}
+
+	executable := parts[0]
+	args := parts[1:]
+
+	s.cmd = exec.Command(executable, args...)
 
 	s.cmd.Dir = s.model.Path
 
-	var err error
+	var errBuffer bytes.Buffer
+	s.cmd.Stderr = &errBuffer
+
 	s.stdin, err = s.cmd.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdin pipe: %w", err)
@@ -55,8 +79,6 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-
-	s.cmd.Stderr = s.cmd.Stdout // Redirect stderr to stdout
 
 	if err := s.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
@@ -74,7 +96,7 @@ func (s *Server) readConsole() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		s.console <- line
-		log.Printf("[%s] %s", s.model.Name, line) // Log server output
+		log.Printf("[%s] %s", s.model.Name, line)
 	}
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error reading server output: %v", err)
@@ -185,4 +207,34 @@ func (s *Server) GetName() string {
 
 func (s *Server) GetPath() string {
 	return s.model.Path
+}
+
+func (s *Server) GetConfig() (*model.ServerConfig, error) {
+	var config model.ServerConfig
+	if err := db.GetDB().Where("server_id = ?", s.GetServerId()).First(&config).Error; err != nil {
+		return nil, fmt.Errorf("failed to get server config: %w", err)
+	}
+	return &config, nil
+}
+
+func (s *Server) GetServerId() uint8 {
+	return uint8(s.model.ID)
+}
+
+func (s *Server) String() string {
+	return fmt.Sprintf("Server{Name: %s, Path: %s, IsRunning: %t}", s.model.Name, s.model.Path, s.isRunning)
+}
+
+func (s *Server) GetServerDetails() *ServerDetails {
+	config, err := s.GetConfig()
+	if err != nil {
+		log.Printf("Failed to get server config: %v", err)
+	}
+	return &ServerDetails{
+		Name:      s.model.Name,
+		Path:      s.model.Path,
+		IsRunning: s.isRunning,
+		ServerId:  uint8(s.model.ID),
+		Config:    *config,
+	}
 }
