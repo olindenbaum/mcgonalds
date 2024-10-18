@@ -1,1 +1,40 @@
- 
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--primary-color);
+  padding: 15px 30px;
+}
+
+.navbar-brand {
+  color: white;
+  font-size: 24px;
+  margin: 0;
+}
+
+.navbar-links {
+  list-style: none;
+  display: flex;
+  gap: 20px;
+}
+
+.navbar-links li a {
+  color: white;
+  text-decoration: none;
+  font-size: 18px;
+  transition: color 0.3s;
+  display: flex;
+  align-items: center;
+}
+
+.navbar-links li a:hover {
+  color: var(--secondary-color);
+}
+
+.navbar-links .active a {
+  border-bottom: 2px solid var(--secondary-color);
+}
+
+.icon {
+  margin-right: 8px;
+}

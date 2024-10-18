@@ -48,7 +48,6 @@ func (h *Handler) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/mod-packs", h.GetCommonModPacks).Methods("GET")
 	r.HandleFunc("/servers/{id}/output", h.GetServerOutput).Methods("GET")
 	r.HandleFunc("/servers/{id}/output/ws", h.GetServerOutputWS).Methods("GET")
-	// r.HandleFunc("/additional-files", h.UploadAdditionalFile).Methods("POST")
 }
 
 // CreateServer godoc

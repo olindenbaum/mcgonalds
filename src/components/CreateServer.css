@@ -1,13 +1,22 @@
 .create-server-container {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 20px;
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 30px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.create-server-container h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: var(--primary-color);
 }
 
 .create-server-form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 20px;
 }
 
 .form-group {
@@ -16,12 +25,13 @@
 }
 
 .form-group label {
-  margin-bottom: 5px;
-  font-weight: bold;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .form-group input[type="text"],
-.form-group select {
+.form-group select,
+.form-group input[type="file"] {
   padding: 10px;
   font-size: 16px;
   border: 1px solid #ccc;
@@ -29,23 +39,33 @@
 }
 
 .file-input-container {
-  margin-top: 10px;
   display: flex;
   align-items: center;
+  margin-top: 10px;
 }
 
-.file-input {
+.file-input-container input[type="file"] {
   margin-right: 10px;
 }
 
+.file-input-container span {
+  font-style: italic;
+  color: #555;
+}
+
 .submit-button {
-  padding: 12px;
-  font-size: 16px;
-  background-color: #4caf50;
+  padding: 12px 20px;
+  background-color: var(--primary-color);
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s ease;
+}
+
+.submit-button:hover {
+  background-color: var(--secondary-color);
 }
 
 .submit-button:disabled {
@@ -54,22 +74,22 @@
 }
 
 .error-message {
-  background-color: #f44336;
+  background-color: var(--error-color);
   color: white;
-  padding: 10px;
+  padding: 12px;
   border-radius: 4px;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
 }
 
 .success-message {
-  background-color: #4caf50;
+  background-color: var(--success-color);
   color: white;
-  padding: 10px;
+  padding: 12px;
   border-radius: 4px;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
 }
 
-/* Add transitions for smoother interactions */
+/* Transitions */
 .create-server-form input,
 .create-server-form select,
 .submit-button {
@@ -78,20 +98,14 @@
 
 .create-server-form input:focus,
 .create-server-form select:focus {
-  border-color: #4caf50;
+  border-color: var(--primary-color);
   box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
 }
 
-/* Style for file input labels */
-.file-input-container span {
-  font-style: italic;
-  color: #555;
-}
-
-/* Responsive adjustments */
+/* Responsive Design */
 @media (max-width: 600px) {
   .create-server-container {
-    padding: 10px;
+    padding: 20px;
   }
 
   .submit-button {

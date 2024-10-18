@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import './ServerList.css';
 
 function ServerList() {
   const [servers, setServers] = useState([]);
@@ -20,15 +21,17 @@ function ServerList() {
   };
 
   return (
-    <div>
+    <div className="server-list-container">
       <h1>Minecraft Servers</h1>
-      <ul>
+      <div className="server-cards">
         {servers.map((server) => (
-          <li key={server.id}>
-            <Link to={`/server/${server.id}`}>{server.name}</Link> - Status: {server.status}
-          </li>
+          <div key={server.id} className="server-card">
+            <h2>{server.name}</h2>
+            <p>Status: <span className={server.status === 'Running' ? 'status-running' : 'status-stopped'}>{server.status}</span></p>
+            <Link to={`/server/${server.id}`} className="details-link">View Details</Link>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
