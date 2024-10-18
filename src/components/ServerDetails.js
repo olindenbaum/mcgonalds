@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-
+import './ServerDetails.css';
 function ServerDetails() {
   const { id } = useParams();
   const [server, setServer] = useState(null);

@@ -1,0 +1,117 @@
+
+.server-details-container {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 25px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .server-details-container h1 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+  }
+  
+  .server-info, .server-config, .server-controls, .command-section, .server-output {
+    margin-bottom: 30px;
+  }
+  
+  .server-config h2, .command-section h2, .server-output h2 {
+    color: var(--secondary-color);
+    margin-bottom: 15px;
+  }
+  
+  .server-config p, .server-info p {
+    margin: 5px 0;
+  }
+  
+  .config-detail {
+    margin-left: 20px;
+  }
+  
+  .server-controls .control-group {
+    margin-bottom: 15px;
+  }
+  
+  .server-controls label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+  }
+  
+  .server-controls input {
+    padding: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .button-group {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+  }
+  
+  .button-group button {
+    flex: 1;
+    padding: 10px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .button-group button:hover {
+    background-color: var(--secondary-color);
+  }
+  
+  .command-section form {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .command-section input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  
+  .command-section button {
+    padding: 10px 20px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+  }
+  
+  .command-section button:hover {
+    background-color: var(--secondary-color);
+  }
+  
+  .server-output pre {
+    background-color: #f0f0f0;
+    padding: 15px;
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: scroll;
+  }
+  
+  @media (max-width: 600px) {
+    .button-group {
+      flex-direction: column;
+    }
+  
+    .command-section form {
+      flex-direction: column;
+    }
+  
+    .command-section button {
+      width: 100%;
+    }
+  }
