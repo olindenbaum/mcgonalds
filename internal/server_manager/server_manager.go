@@ -46,7 +46,7 @@ func NewServerManager(db *gorm.DB, commonDir string) (*ServerManager, error) {
 	return sm, nil
 }
 
-func (sm *ServerManager) CreateServer(name, path, executableCommand string, jarFile *model.JarFile, modPack *model.ModPack, additionalFileIDs []uint) (uint8, error) {
+func (sm *ServerManager) CreateServer(name, path, executableCommand string, jarFile *model.JarFile, modPack *model.ModPack, additionalFileIDs []uint, userID uint) (uint8, error) {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
@@ -67,8 +67,10 @@ func (sm *ServerManager) CreateServer(name, path, executableCommand string, jarF
 
 	// Create server model
 	serverModel := &model.Server{
-		Name: name,
-		Path: path,
+		Name:   name,
+		UserID: userID,
+		Status: "stopped",
+		Path:   path,
 	}
 
 	// Create server in the database
@@ -100,39 +102,42 @@ func (sm *ServerManager) CreateServer(name, path, executableCommand string, jarF
 	}
 
 	// Create server directory
-	envDir := filepath.Join(path, "env")
-	if err := os.MkdirAll(envDir, 0755); err != nil {
+	log.Printf("Creating server directory: %s", path)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		log.Printf("Failed to create server environment directory: %v", err)
 		return 0, fmt.Errorf("failed to create server environment directory: %w", err)
 	}
+	log.Printf("Server directory created successfully: %s", path)
 
 	// Handle symbolic link for JAR file
 	if jarFile != nil {
 		jarSource := jarFile.Path
-		jarDest := filepath.Join(envDir, "server.jar")
+		jarDest := filepath.Join(path, "server.jar")
+		log.Printf("Creating symlink for JAR file: %s -> %s", jarSource, jarDest)
 		if err := utils.CreateSymlink(jarSource, jarDest); err != nil {
+			log.Printf("Failed to create symlink for jar file: %v", err)
 			return 0, fmt.Errorf("failed to create symlink for jar file: %w", err)
 		}
+		log.Printf("Symlink for JAR file created successfully")
 	}
 
 	// Handle symbolic link for Mod Pack
 	if modPack != nil {
 		modPackSource := modPack.Path
-		modPackDest := filepath.Join(envDir, "mods")
+		modPackDest := filepath.Join(path, "mods")
+		log.Printf("Creating symlink for Mod Pack: %s -> %s", modPackSource, modPackDest)
 		if err := utils.CreateSymlink(modPackSource, modPackDest); err != nil {
+			log.Printf("Failed to create symlink for mod pack: %v", err)
 			return 0, fmt.Errorf("failed to create symlink for mod pack: %w", err)
 		}
-	}
-
-	// Save the executable command to a script file for easy execution
-	execScriptPath := filepath.Join(envDir, "start.sh")
-	execScriptContent := fmt.Sprintf("#!/bin/bash\n%s", executableCommand)
-	if err := os.WriteFile(execScriptPath, []byte(execScriptContent), 0755); err != nil {
-		return 0, fmt.Errorf("failed to create executable script: %w", err)
+		log.Printf("Symlink for Mod Pack created successfully")
 	}
 
 	// Initialize the server instance
+	log.Printf("Initializing server instance for ID: %d", serverModel.ID)
 	srv := server.NewServer(serverModel)
 	sm.servers[uint8(serverModel.ID)] = srv
+	log.Printf("Server instance initialized successfully")
 
 	return uint8(serverModel.ID), nil
 }
@@ -155,7 +160,7 @@ func (sm *ServerManager) GetModPackByID(id uint) (*model.ModPack, error) {
 	return &modPack, nil
 }
 
-func (sm *ServerManager) GetServer(id uint8) (*server.Server, error) {
+func (sm *ServerManager) GetServer(id uint8, userID uint) (*server.Server, error) {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
@@ -164,7 +169,7 @@ func (sm *ServerManager) GetServer(id uint8) (*server.Server, error) {
 	fmt.Printf("Exists: %v", exists)
 	if !exists {
 		var dbServer model.Server
-		if err := sm.db.Where("id = ?", id).First(&dbServer).Error; err != nil {
+		if err := sm.db.Where("id = ? AND user_id = ?", id, userID).First(&dbServer).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
 				return nil, fmt.Errorf("server %s not found", id)
 			}
@@ -180,7 +185,7 @@ func (sm *ServerManager) GetServer(id uint8) (*server.Server, error) {
 	return srv, nil
 }
 
-func (sm *ServerManager) DeleteServer(id uint8) error {
+func (sm *ServerManager) DeleteServer(id uint8, userID uint) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
@@ -189,41 +194,51 @@ func (sm *ServerManager) DeleteServer(id uint8) error {
 	}
 
 	delete(sm.servers, id)
-	return sm.db.Where("id = ?", id).Delete(&model.Server{}).Error
+	return sm.db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.Server{}).Error
 }
-
-func (sm *ServerManager) StartServer(id uint8) error {
+func (sm *ServerManager) StartServer(id uint8, userID uint) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
+	log.Printf("Starting server with ID: %d for user: %d", id, userID)
+
 	srv, exists := sm.servers[id]
 	if !exists {
+		log.Printf("Server %d not found in memory, initializing from database", id)
 		// Initialize the server instance
 		var serverModel model.Server
-		if err := sm.db.Where("id = ?", id).First(&serverModel).Error; err != nil {
+		if err := sm.db.Where("id = ? AND user_id = ?", id, userID).First(&serverModel).Error; err != nil {
+			log.Printf("Failed to find server in database: %v", err)
 			return fmt.Errorf("server not found: %w", err)
 		}
 		srv = server.NewServer(&serverModel)
 		sm.servers[id] = srv
+		log.Printf("Server %d initialized and added to memory", id)
 	}
 
 	// Ensure required files are present
+	log.Printf("Verifying required files for server %d", id)
 	if err := sm.verifyRequiredFiles(id); err != nil {
+		log.Printf("Failed to verify required files: %v", err)
 		return err
 	}
 
 	// Start the server
+	log.Printf("Attempting to start server %d", id)
 	if err := srv.Start(); err != nil {
+		log.Printf("Failed to start server %d: %v", id, err)
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 
 	// Optionally, manage output stream
+	log.Printf("Starting output stream for server %d", id)
 	go sm.streamServerOutput(id, srv)
 
+	log.Printf("Server %d started successfully", id)
 	return nil
 }
 
-func (sm *ServerManager) StopServer(id uint8) error {
+func (sm *ServerManager) StopServer(id uint8, userID uint) error {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
@@ -272,7 +287,7 @@ func (sm *ServerManager) UploadJarFile(name, version string, file io.Reader, bas
 
 	if serverID != "" {
 		// Server-specific jar file
-		jarDir = filepath.Join(currentDir, sm.commonDir, "game_servers", serverID)
+		jarDir = filepath.Join(currentDir, serverID)
 	} else if isCommon {
 		// Common jar file
 		jarDir = filepath.Join(currentDir, sm.commonDir, "jar_files")
@@ -466,12 +481,12 @@ func (sm *ServerManager) SetupServer(serverName string) error {
 }
 
 // ListServers returns a list of all servers
-func (sm *ServerManager) ListServers() ([]model.Server, error) {
+func (sm *ServerManager) ListServers(userID uint) ([]model.Server, error) {
 	sm.mutex.RLock()
 	defer sm.mutex.RUnlock()
 
 	var servers []model.Server
-	if err := sm.db.Find(&servers).Error; err != nil {
+	if err := sm.db.Where("user_id = ?", userID).Find(&servers).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch servers from database: %w", err)
 	}
 

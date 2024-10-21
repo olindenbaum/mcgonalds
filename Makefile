@@ -1,5 +1,7 @@
 # Database connection string (replace with your actual details)
-DB_CONNECTION_STRING := "postgres://postgres:changeme@localhost:5432/mcgonalds_db?sslmode=disable"
+export GOOSE_DBSTRING := postgres://postgres:changeme@localhost:5432/mcgonalds_db?sslmode=disable
+export GOOSE_DRIVER := postgres
+export GOOSE_DIR := migrations
 
 # Default target
 .PHONY: all
@@ -13,11 +15,11 @@ run:
 # Run database migrations
 .PHONY: migrate
 migrate:
-	goose -dir migrations postgres $(DB_CONNECTION_STRING) up
+	goose up
 # Run database migrations
 .PHONY: down
 down:
-	goose -dir migrations postgres $(DB_CONNECTION_STRING) down
+	goose down
 
 # Generate Swagger documentation
 .PHONY: swagger

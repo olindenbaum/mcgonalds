@@ -1,42 +1,27 @@
 basePath: /api/v1
 definitions:
-  model.AdditionalFile:
+  handlers.LoginRequest:
     properties:
-      created_at:
+      email:
         type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      path:
-        type: string
-      type:
-        description: e.g., "modpack", "config", etc.
-        type: string
-      updated_at:
+      password:
         type: string
     type: object
-  model.CreateServerRequest:
+  handlers.SignupRequest:
     properties:
-      executable_command:
+      email:
         type: string
-      jar_file_id:
-        description: ID of the JAR file
-        type: integer
-      mod_pack_id:
-        description: Optional ID of the mod pack
-        type: integer
-      name:
+      password:
         type: string
-      path:
+      username:
         type: string
-    required:
-    - executable_command
-    - jar_file_id
-    - name
-    - path
+    type: object
+  handlers.StartServerRequest:
+    properties:
+      port:
+        type: string
+      ram:
+        type: string
     type: object
   model.ErrorResponse:
     properties:
@@ -90,55 +75,22 @@ definitions:
     type: object
   model.Server:
     properties:
-      additional_file_ids:
-        items:
-          type: integer
-        type: array
-      additional_files:
-        items:
-          $ref: '#/definitions/model.AdditionalFile'
-        type: array
       created_at:
         type: string
       deleted_at:
         type: string
       id:
-        type: integer
-      jar_file:
-        $ref: '#/definitions/model.JarFile'
-      jar_file_id:
         type: integer
       name:
         type: string
       path:
         type: string
-      server_config:
-        $ref: '#/definitions/model.ServerConfig'
+      status:
+        type: string
       updated_at:
         type: string
-    type: object
-  model.ServerConfig:
-    properties:
-      created_at:
-        type: string
-      deleted_at:
-        type: string
-      executable_command:
-        type: string
-      id:
+      user_id:
         type: integer
-      jar_file:
-        $ref: '#/definitions/model.JarFile'
-      jar_file_id:
-        type: integer
-      mod_pack:
-        $ref: '#/definitions/model.ModPack'
-      mod_pack_id:
-        type: integer
-      server_id:
-        type: integer
-      updated_at:
-        type: string
     type: object
 host: localhost:8080
 info:
@@ -155,12 +107,35 @@ info:
   version: "1.0"
 paths:
   /jar-files:
+    get:
+      description: Retrieve a list of common JAR files
+      parameters:
+      - description: Filter by common JAR files
+        in: query
+        name: common
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.JarFile'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Get common JAR files
+      tags:
+      - jar-files
     post:
       consumes:
       - multipart/form-data
       description: Upload a shared JAR file to be used by multiple servers
       parameters:
-      - description: Name of the JAR file
+      - description: Nickname of the JAR file
         in: formData
         name: name
         required: true
@@ -193,7 +168,58 @@ paths:
       summary: Upload a shared JAR file
       tags:
       - jar-files
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user and get a JWT token
+      parameters:
+      - description: User login information
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Authentication successful
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Invalid email or password
+          schema:
+            type: string
+      summary: Authenticate user
+      tags:
+      - auth
   /mod-packs:
+    get:
+      description: Retrieve a list of common mod packs
+      parameters:
+      - description: Filter by common mod packs
+        in: query
+        name: common
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.ModPack'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Get common mod packs
+      tags:
+      - mod-packs
     post:
       consumes:
       - multipart/form-data
@@ -262,12 +288,32 @@ paths:
       description: Create a new Minecraft server with specified jar file and additional
         files
       parameters:
-      - description: Server creation request
-        in: body
-        name: server
+      - description: Server Name
+        in: formData
+        name: name
         required: true
-        schema:
-          $ref: '#/definitions/model.CreateServerRequest'
+        type: string
+      - description: Executable Command
+        in: formData
+        name: executable_command
+        required: true
+        type: string
+      - description: JAR File ID
+        in: formData
+        name: jar_file_id
+        type: integer
+      - description: JAR File
+        in: formData
+        name: jar_file
+        type: file
+      - description: Mod Pack ID
+        in: formData
+        name: mod_pack_id
+        type: integer
+      - description: Mod Pack File
+        in: formData
+        name: mod_pack
+        type: file
       produces:
       - application/json
       responses:
@@ -286,15 +332,15 @@ paths:
       summary: Create a new Minecraft server
       tags:
       - servers
-  /servers/{name}:
+  /servers/{id}:
     delete:
       description: Delete a specific Minecraft server by name
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
       produces:
       - application/json
       responses:
@@ -318,11 +364,11 @@ paths:
     get:
       description: Get details of a specific Minecraft server by name
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
       produces:
       - application/json
       responses:
@@ -341,17 +387,17 @@ paths:
       summary: Get a specific Minecraft server
       tags:
       - servers
-  /servers/{name}/command:
+  /servers/{id}/command:
     post:
       consumes:
       - application/json
       description: Send a command to a specific Minecraft server by name
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
       - description: Command to send
         in: body
         name: command
@@ -384,15 +430,57 @@ paths:
       summary: Send a command to a Minecraft server
       tags:
       - servers
-  /servers/{name}/restart:
+  /servers/{id}/output:
+    get:
+      description: Retrieve the output stream of a specific Minecraft server
+      parameters:
+      - description: Server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Get server output
+      tags:
+      - servers
+  /servers/{id}/output/ws:
+    get:
+      description: Establish a WebSocket connection to receive real-time server output
+      parameters:
+      - description: Server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses: {}
+      summary: Get server output via WebSocket
+      tags:
+      - servers
+  /servers/{id}/restart:
     post:
       description: Restart a specific Minecraft server by name
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
       produces:
       - application/json
       responses:
@@ -413,15 +501,24 @@ paths:
       summary: Restart a Minecraft server
       tags:
       - servers
-  /servers/{name}/start:
+  /servers/{id}/start:
     post:
-      description: Start a specific Minecraft server by name
+      consumes:
+      - application/json
+      description: Start a specific Minecraft server by name with customizable RAM
+        and port
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
+      - description: RAM and Port
+        in: body
+        name: StartServerRequest
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.StartServerRequest'
       produces:
       - application/json
       responses:
@@ -442,15 +539,15 @@ paths:
       summary: Start a Minecraft server
       tags:
       - servers
-  /servers/{name}/stop:
+  /servers/{id}/stop:
     post:
       description: Stop a specific Minecraft server by name
       parameters:
-      - description: Server Name
+      - description: Server ID
         in: path
-        name: name
+        name: id
         required: true
-        type: string
+        type: integer
       produces:
       - application/json
       responses:
@@ -469,43 +566,6 @@ paths:
           schema:
             $ref: '#/definitions/model.ErrorResponse'
       summary: Stop a Minecraft server
-      tags:
-      - servers
-  /servers/{name}/upload-jar:
-    post:
-      consumes:
-      - multipart/form-data
-      description: Upload a JAR file to a specific server, either selecting a common
-        JAR or uploading a new one
-      parameters:
-      - description: Server Name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: JAR file to upload
-        in: formData
-        name: file
-        required: true
-        type: file
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: JAR file uploaded successfully
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/model.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/model.ErrorResponse'
-      summary: Upload JAR file for a server
       tags:
       - servers
   /servers/{name}/upload-modpack:
@@ -545,4 +605,83 @@ paths:
       summary: Upload mod pack for a server
       tags:
       - servers
+  /servers/{serverId}/upload-jar:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a JAR file to a specific server, either selecting a common
+        JAR or uploading a new one
+      parameters:
+      - description: Server Name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Version of the JAR file
+        in: formData
+        name: version
+        required: true
+        type: string
+      - description: Server ID
+        in: path
+        name: serverID
+        required: true
+        type: string
+      - description: JAR file to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: JAR file uploaded successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/model.ErrorResponse'
+      summary: Upload JAR file for a server
+      tags:
+      - servers
+  /signup:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account
+      parameters:
+      - description: User signup information
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SignupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request payload or user creation error
+          schema:
+            type: string
+        "500":
+          description: Error processing password
+          schema:
+            type: string
+      summary: Register a new user
+      tags:
+      - auth
 swagger: "2.0"

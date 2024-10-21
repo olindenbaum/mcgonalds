@@ -16,6 +16,10 @@ type DatabaseConfig struct {
 	SSLMode  bool   `yaml:"sslmode"`
 }
 
+type Storage struct {
+	CommonDir string `yaml:"common_dir"`
+}
+
 type Config struct {
 	Server struct {
 		Port string `yaml:"port"`
@@ -24,9 +28,7 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 
 	// Added local storage paths
-	Storage struct {
-		CommonDir string `yaml:"common_dir"`
-	} `yaml:"storage"`
+	Storage Storage `yaml:"storage"`
 
 	JWTConfig JWTConfig `yaml:"jwt"`
 }

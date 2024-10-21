@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/olindenbaum/mcgonalds/internal/config"
+	"github.com/olindenbaum/mcgonalds/internal/middleware"
 	"github.com/olindenbaum/mcgonalds/internal/model"
 	"github.com/olindenbaum/mcgonalds/internal/server_manager"
 	"gorm.io/gorm"
@@ -31,7 +32,12 @@ func NewHandler(db *gorm.DB, sm *server_manager.ServerManager, config *config.Co
 	}
 }
 
-func (h *Handler) RegisterRoutes(r *mux.Router) {
+func (h *Handler) RegisterUnauthenticatedRoutes(r *mux.Router) {
+	r.HandleFunc("/signup", h.Signup).Methods("POST")
+	r.HandleFunc("/login", h.Login).Methods("POST")
+}
+
+func (h *Handler) RegisterAuthenticatedRoutes(r *mux.Router) {
 	r.HandleFunc("/servers", h.CreateServer).Methods("POST")
 	r.HandleFunc("/servers", h.ListServers).Methods("GET")
 	r.HandleFunc("/servers/{id}", h.GetServer).Methods("GET")
@@ -68,6 +74,11 @@ func (h *Handler) RegisterRoutes(r *mux.Router) {
 // @Router /servers [post]
 func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
 	// Parse multipart form data with a maximum memory of 100MB
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	err := r.ParseMultipartForm(100 << 20)
 	if err != nil {
 		log.Printf("Error parsing multipart form: %v", err)
@@ -200,8 +211,20 @@ func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
 
 	// Create the server
 	dir, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting current working directory: %v", err)
+		http.Error(w, "Failed to create server", http.StatusInternalServerError)
+		return
+	}
 	serverPath := filepath.Join(dir, "game_servers", name)
-	id, err := h.ServerManager.CreateServer(name, serverPath, executableCommand, jarFile, modPack, nil)
+	log.Printf("Creating server with path: %s", serverPath)
+	id, err := h.ServerManager.CreateServer(name, serverPath, executableCommand, jarFile, modPack, nil, userID)
+	if err != nil {
+		log.Printf("Error creating server: %v", err)
+		http.Error(w, "Failed to create server", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Server created successfully with ID: %d", id)
 	if err != nil {
 		log.Printf("Error creating server: %v", err)
 		http.Error(w, "Failed to create server", http.StatusInternalServerError)
@@ -209,7 +232,7 @@ func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Respond with the created server details
-	server, err := h.ServerManager.GetServer(id)
+	server, err := h.ServerManager.GetServer(uint8(id), userID)
 	if err != nil {
 		log.Printf("Error fetching created server: %v", err)
 		http.Error(w, "Server created but failed to fetch details", http.StatusInternalServerError)
@@ -229,7 +252,13 @@ func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object{ model.ErrorResponse
 // @Router /servers [get]
 func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
-	servers, err := h.ServerManager.ListServers()
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	servers, err := h.ServerManager.ListServers(userID)
 	if err != nil {
 		http.Error(w, "Failed to fetch servers", http.StatusInternalServerError)
 		return
@@ -250,6 +279,11 @@ func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} model.ErrorResponse
 // @Router /servers/{id} [get]
 func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	vars := mux.Vars(r)
 	serverId := vars["id"]
 	fmt.Printf("Getting server with ID: %s", serverId)
@@ -258,7 +292,7 @@ func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid server ID", http.StatusBadRequest)
 		return
 	}
-	server, err := h.ServerManager.GetServer(uint8(id))
+	server, err := h.ServerManager.GetServer(uint8(id), userID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			http.Error(w, "Server not found", http.StatusNotFound)
@@ -283,6 +317,11 @@ func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object} model.ErrorResponse
 // @Router /servers/{id} [delete]
 func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	vars := mux.Vars(r)
 	serverId := vars["id"]
 
@@ -292,7 +331,7 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ServerManager.DeleteServer(uint8(id)); err != nil {
+	if err := h.ServerManager.DeleteServer(uint8(id), userID); err != nil {
 		http.Error(w, "Failed to delete server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -303,8 +342,6 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 
 // StartServerRequest represents the payload for starting a server
 type StartServerRequest struct {
-	RAM  string `json:"ram"`
-	Port string `json:"port"`
 }
 
 // StartServer godoc
@@ -320,6 +357,11 @@ type StartServerRequest struct {
 // @Failure 500 {object} model.ErrorResponse
 // @Router /servers/{id}/start [post]
 func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	vars := mux.Vars(r)
 	serverId := vars["id"]
 
@@ -329,31 +371,8 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var startReq StartServerRequest
-	if err := json.NewDecoder(r.Body).Decode(&startReq); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Construct the executable command with RAM and Port
-	// executableCommand, err := h.ServerManager.GetExecutableCommand(uint8(id))
-	// if err != nil {
-	// 	log.Printf("Error getting executable command: %v", err)
-	// 	http.Error(w, "Failed to get executable command", http.StatusInternalServerError)
-	// 	return
-	// }
-	// customCommand := executableCommand + " -Xmx" + startReq.RAM + " -Xms" + startReq.RAM + " --port " + startReq.Port
-
-	// // Update the server configuration if needed
-	// err = h.ServerManager.UpdateServerCommand(uint8(id), customCommand)
-	if err != nil {
-		log.Printf("Error updating server command: %v", err)
-		http.Error(w, "Failed to update server command", http.StatusInternalServerError)
-		return
-	}
-
 	// Start the server
-	err = h.ServerManager.StartServer(uint8(id))
+	err = h.ServerManager.StartServer(uint8(id), userID)
 	if err != nil {
 		log.Printf("Error starting server: %v", err)
 		http.Error(w, "Failed to start server: "+err.Error(), http.StatusInternalServerError)
@@ -375,6 +394,11 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {object{ model.ErrorResponse
 // @Router /servers/{id}/stop [post]
 func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 	vars := mux.Vars(r)
 	serverId := vars["id"]
 
@@ -384,7 +408,7 @@ func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ServerManager.StopServer(uint8(id)); err != nil {
+	if err := h.ServerManager.StopServer(uint8(id), userID); err != nil {
 		http.Error(w, "Failed to stop server: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -765,6 +789,24 @@ func (h *Handler) GetServerOutputWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user ID from context
+	userID, ok := r.Context().Value(middleware.ContextUserID).(uint)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check server ownership
+	var server model.Server
+	if err := h.DB.First(&server, id).Error; err != nil {
+		http.Error(w, "Server not found", http.StatusNotFound)
+		return
+	}
+
+	if server.UserID != userID {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)

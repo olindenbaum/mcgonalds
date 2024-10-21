@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import './CreateServer.css'; // Import the CSS for styling
+import React, { useState, useEffect, useContext } from 'react';
+import axios from '../utils/axiosInstance';
+import './CreateServer.css';
+import { AuthContext } from '../contexts/AuthContext';
 
 function CreateServer() {
+  const { auth } = useContext(AuthContext);
   const [name, setName] = useState('');
   const [jarFile, setJarFile] = useState('');
   const [modPack, setModPack] = useState('');
@@ -21,10 +23,10 @@ function CreateServer() {
 
   const fetchCommonAssets = async () => {
     try {
-      const jarsResponse = await axios.get('/api/v1/jar-files?common=true');
+      const jarsResponse = await axios.get('/jar-files?common=true');
       setCommonJars(jarsResponse.data);
 
-      const modPacksResponse = await axios.get('/api/v1/mod-packs?common=true');
+      const modPacksResponse = await axios.get('/mod-packs?common=true');
       setCommonModPacks(modPacksResponse.data);
     } catch (error) {
       console.error('Error fetching common assets:', error);
@@ -41,9 +43,10 @@ function CreateServer() {
     try {
       const formData = new FormData();
       formData.append('name', name);
+      formData.append('executable_command', command);
       if (selectedJarFile) {
         formData.append('jar_file', selectedJarFile);
-      } else {
+      } else if (jarFile) {
         formData.append('jar_file_id', jarFile);
       }
 
@@ -53,17 +56,16 @@ function CreateServer() {
         formData.append('mod_pack_id', modPack);
       }
 
-      formData.append('executable_command', command);
-
       const config = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       };
 
-      const response = await axios.post('/api/v1/servers', formData, config);
+      const response = await axios.post('/servers', formData, config);
       console.log('Server created:', response.data);
       setSuccess('Server created successfully!');
+      // Reset form
       setName('');
       setJarFile('');
       setModPack('');
@@ -72,7 +74,7 @@ function CreateServer() {
       setSelectedModPack(null);
     } catch (error) {
       console.error('Error creating server:', error);
-      setError('Failed to create server.');
+      setError(error.response?.data?.message || 'Failed to create server.');
     } finally {
       setLoading(false);
     }

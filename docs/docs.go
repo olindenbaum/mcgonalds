@@ -25,6 +25,41 @@ const docTemplate = `{
     "basePath": "{{.BasePath}}",
     "paths": {
         "/jar-files": {
+            "get": {
+                "description": "Retrieve a list of common JAR files",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jar-files"
+                ],
+                "summary": "Get common JAR files",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by common JAR files",
+                        "name": "common",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.JarFile"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Upload a shared JAR file to be used by multiple servers",
                 "consumes": [
@@ -40,7 +75,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Name of the JAR file",
+                        "description": "Nickname of the JAR file",
                         "name": "name",
                         "in": "formData",
                         "required": true
@@ -82,7 +117,85 @@ const docTemplate = `{
                 }
             }
         },
+        "/login": {
+            "post": {
+                "description": "Authenticate a user and get a JWT token",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Authenticate user",
+                "parameters": [
+                    {
+                        "description": "User login information",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Authentication successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid email or password",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/mod-packs": {
+            "get": {
+                "description": "Retrieve a list of common mod packs",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mod-packs"
+                ],
+                "summary": "Get common mod packs",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by common mod packs",
+                        "name": "common",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/model.ModPack"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "description": "Upload a shared mod pack to be used by multiple servers",
                 "consumes": [
@@ -189,13 +302,42 @@ const docTemplate = `{
                 "summary": "Create a new Minecraft server",
                 "parameters": [
                     {
-                        "description": "Server creation request",
-                        "name": "server",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.CreateServerRequest"
-                        }
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Executable Command",
+                        "name": "executable_command",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "JAR File ID",
+                        "name": "jar_file_id",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "JAR File",
+                        "name": "jar_file",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Mod Pack ID",
+                        "name": "mod_pack_id",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Mod Pack File",
+                        "name": "mod_pack",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -220,7 +362,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/servers/{name}": {
+        "/servers/{id}": {
             "get": {
                 "description": "Get details of a specific Minecraft server by name",
                 "produces": [
@@ -232,9 +374,9 @@ const docTemplate = `{
                 "summary": "Get a specific Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -271,9 +413,9 @@ const docTemplate = `{
                 "summary": "Delete a Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -303,7 +445,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/servers/{name}/command": {
+        "/servers/{id}/command": {
             "post": {
                 "description": "Send a command to a specific Minecraft server by name",
                 "consumes": [
@@ -318,9 +460,9 @@ const docTemplate = `{
                 "summary": "Send a command to a Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     },
@@ -368,7 +510,70 @@ const docTemplate = `{
                 }
             }
         },
-        "/servers/{name}/restart": {
+        "/servers/{id}/output": {
+            "get": {
+                "description": "Retrieve the output stream of a specific Minecraft server",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Get server output",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/servers/{id}/output/ws": {
+            "get": {
+                "description": "Establish a WebSocket connection to receive real-time server output",
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Get server output via WebSocket",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/servers/{id}/restart": {
             "post": {
                 "description": "Restart a specific Minecraft server by name",
                 "produces": [
@@ -380,9 +585,9 @@ const docTemplate = `{
                 "summary": "Restart a Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -412,9 +617,12 @@ const docTemplate = `{
                 }
             }
         },
-        "/servers/{name}/start": {
+        "/servers/{id}/start": {
             "post": {
-                "description": "Start a specific Minecraft server by name",
+                "description": "Start a specific Minecraft server by name with customizable RAM and port",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -424,11 +632,20 @@ const docTemplate = `{
                 "summary": "Start a Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "RAM and Port",
+                        "name": "StartServerRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.StartServerRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -456,7 +673,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/servers/{name}/stop": {
+        "/servers/{id}/stop": {
             "post": {
                 "description": "Stop a specific Minecraft server by name",
                 "produces": [
@@ -468,9 +685,9 @@ const docTemplate = `{
                 "summary": "Stop a Minecraft server",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
+                        "type": "integer",
+                        "description": "Server ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -487,60 +704,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/servers/{name}/upload-jar": {
-            "post": {
-                "description": "Upload a JAR file to a specific server, either selecting a common JAR or uploading a new one",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "servers"
-                ],
-                "summary": "Upload JAR file for a server",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "JAR file to upload",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "JAR file uploaded successfully",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.ErrorResponse"
                         }
@@ -607,60 +770,158 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/servers/{serverId}/upload-jar": {
+            "post": {
+                "description": "Upload a JAR file to a specific server, either selecting a common JAR or uploading a new one",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "servers"
+                ],
+                "summary": "Upload JAR file for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Version of the JAR file",
+                        "name": "version",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server ID",
+                        "name": "serverID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "JAR file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "JAR file uploaded successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/signup": {
+            "post": {
+                "description": "Create a new user account",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Register a new user",
+                "parameters": [
+                    {
+                        "description": "User signup information",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SignupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User created successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request payload or user creation error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error processing password",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "model.AdditionalFile": {
+        "handlers.LoginRequest": {
             "type": "object",
             "properties": {
-                "created_at": {
+                "email": {
                     "type": "string"
                 },
-                "deleted_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "type": {
-                    "description": "e.g., \"modpack\", \"config\", etc.",
-                    "type": "string"
-                },
-                "updated_at": {
+                "password": {
                     "type": "string"
                 }
             }
         },
-        "model.CreateServerRequest": {
+        "handlers.SignupRequest": {
             "type": "object",
-            "required": [
-                "executable_command",
-                "jar_file_id",
-                "name",
-                "path"
-            ],
             "properties": {
-                "executable_command": {
+                "email": {
                     "type": "string"
                 },
-                "jar_file_id": {
-                    "description": "ID of the JAR file",
-                    "type": "integer"
-                },
-                "mod_pack_id": {
-                    "description": "Optional ID of the mod pack",
-                    "type": "integer"
-                },
-                "name": {
+                "password": {
                     "type": "string"
                 },
-                "path": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.StartServerRequest": {
+            "type": "object",
+            "properties": {
+                "port": {
+                    "type": "string"
+                },
+                "ram": {
                     "type": "string"
                 }
             }
@@ -743,18 +1004,6 @@ const docTemplate = `{
         "model.Server": {
             "type": "object",
             "properties": {
-                "additional_file_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "additional_files": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/model.AdditionalFile"
-                    }
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -762,12 +1011,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
-                    "type": "integer"
-                },
-                "jar_file": {
-                    "$ref": "#/definitions/model.JarFile"
-                },
-                "jar_file_id": {
                     "type": "integer"
                 },
                 "name": {
@@ -776,46 +1019,14 @@ const docTemplate = `{
                 "path": {
                     "type": "string"
                 },
-                "server_config": {
-                    "$ref": "#/definitions/model.ServerConfig"
+                "status": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
-                }
-            }
-        },
-        "model.ServerConfig": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
                 },
-                "deleted_at": {
-                    "type": "string"
-                },
-                "executable_command": {
-                    "type": "string"
-                },
-                "id": {
+                "user_id": {
                     "type": "integer"
-                },
-                "jar_file": {
-                    "$ref": "#/definitions/model.JarFile"
-                },
-                "jar_file_id": {
-                    "type": "integer"
-                },
-                "mod_pack": {
-                    "$ref": "#/definitions/model.ModPack"
-                },
-                "mod_pack_id": {
-                    "type": "integer"
-                },
-                "server_id": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
                 }
             }
         }

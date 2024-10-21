@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import axios from '../utils/axiosInstance'; // Updated import
 import './ServerList.css';
+import { AuthContext } from '../contexts/AuthContext';
 
 function ServerList() {
   const [servers, setServers] = useState([]);
+  const { auth } = useContext(AuthContext);
 
   useEffect(() => {
     fetchServers();
     // Optionally, set up polling or WebSocket connections for real-time status updates
-  }, []);
+  }, [auth]);
 
   const fetchServers = async () => {
     try {
-      const response = await axios.get('/api/v1/servers');
+      const response = await axios.get('/servers');
       setServers(response.data);
     } catch (error) {
       console.error('Error fetching servers:', error);

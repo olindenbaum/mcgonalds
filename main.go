@@ -1,14 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	_ "github.com/olindenbaum/mcgonalds/docs" // This line is important
 	"github.com/olindenbaum/mcgonalds/internal/config"
 	"github.com/olindenbaum/mcgonalds/internal/db"
 	"github.com/olindenbaum/mcgonalds/internal/handlers"
+	"github.com/olindenbaum/mcgonalds/internal/middleware"
 	"github.com/olindenbaum/mcgonalds/internal/server_manager"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
@@ -49,10 +52,15 @@ func main() {
 	h := handlers.NewHandler(database, sm, cfg)
 
 	r := mux.NewRouter()
-
+	r.Use(middleware.DebugMiddleware)
 	// API routes
-	api := r.PathPrefix("/api/v1").Subrouter()
-	h.RegisterRoutes(api)
+	authApi := r.PathPrefix("/api/v1").Subrouter()
+	authApi.Use(middleware.AuthMiddleware(&cfg.JWTConfig))
+	h.RegisterAuthenticatedRoutes(authApi)
+
+	// Create a separate subrouter for unauthenticated routes
+	unauthApi := r.PathPrefix("/api/v1").Subrouter()
+	h.RegisterUnauthenticatedRoutes(unauthApi)
 
 	// Serve Swagger UI
 	r.PathPrefix("/swagger/").Handler(httpSwagger.Handler(
@@ -65,4 +73,34 @@ func main() {
 	log.Printf("Starting server on port %s", cfg.Server.Port)
 	log.Printf("API documentation available at http://localhost:%s/swagger/index.html", cfg.Server.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Server.Port, r))
+
+	err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, err := route.GetPathTemplate()
+		if err == nil {
+			fmt.Println("ROUTE:", pathTemplate)
+		}
+		pathRegexp, err := route.GetPathRegexp()
+		if err == nil {
+			fmt.Println("Path regexp:", pathRegexp)
+		}
+		queriesTemplates, err := route.GetQueriesTemplates()
+		if err == nil {
+			fmt.Println("Queries templates:", strings.Join(queriesTemplates, ","))
+		}
+		queriesRegexps, err := route.GetQueriesRegexp()
+		if err == nil {
+			fmt.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
+		}
+		methods, err := route.GetMethods()
+		if err == nil {
+			fmt.Println("Methods:", strings.Join(methods, ","))
+		}
+		fmt.Println()
+		return nil
+	})
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
 }
